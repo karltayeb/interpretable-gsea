@@ -1,0 +1,198 @@
+---
+execute:
+  eval: true 
+---
+# GSEA with logistic SuSiE, simulated example
+
+## Loading gene sets from `gseasusie`
+
+`gseasusie::load_gene_sets` is a helper function for getting gene sets from different sources in a unified format. It gets curated pathways from the `WebGestaltR`, MSigDb pathways from `msigdbr`.
+
+
+```{r load-c2}
+#devtools::install_github('karltayeb/gseasusie')
+c2 <- gseasusie:::load_msigdb_geneset_x('C2')
+```
+
+We get a flat list where each row is a `(gene, gene set)` pair.
+
+```{r}
+head(c2$geneSet)
+```
+We also have access to a human readable description of each gene-set
+
+```{r}
+head(c2$geneSetDes)
+```
+
+Finally, we have a sparse binary matrix encoding gene set membership. 
+
+```{r}
+dim(c2$X)
+```
+
+## Using logistic SuSiE for gene set enrichment analysis
+
+Point `reticulate` to a virtual environment with the `gibss` package installed.
+
+```{r reticulate-setup}
+library(reticulate)
+use_virtualenv('gibss')
+```
+
+```{python gibss-helper-funs}
+from dataclasses import dataclass
+import numpy as np
+from gibss.logisticprofile import logistic_susie, logistic_ser_hermite
+
+@dataclass
+class GSEARes:
+  alpha: np.ndarray
+  effects: np.ndarray
+  log_bfs: np.ndarray
+  
+get_alpha = lambda fit: np.array([c.alpha for c in fit.components])
+get_beta = lambda fit: np.array([c.fits.beta for c in fit.components])
+get_lbf = lambda fit: np.array([c.lbf_ser for c in fit.components])
+
+def gsea(X, y, L=5, prior_variance = 1, maxiter = 10, tol=1e-3):
+  # TODO: check types
+  fit = logistic_susie(
+    X.astype(float), y.astype(float),
+    L=L, method='hermite',
+    serkwargs=dict(m=1, prior_variance=1.0)
+  )
+  return GSEARes(get_alpha(fit), get_beta(fit), get_lbf(fit))
+```
+
+In this simulation we select 5 random gene sets from the MSigDB C2 ("Curate gene sets") to be enriched. Genes have background log odds of $-3$ while membership in each gene set increases the log odds by two. The vast majority of genes in this simulation belong to exactly $1$ or $0$ gene sets. 
+
+```{python main-simulation}
+np.random.seed(1)
+X = r.c2['X'].toarray().T
+beta0 = -3
+beta = np.zeros(X.shape[0])
+beta[np.random.choice(beta.size, 5, replace=False)] = 2.
+logit = beta @ X + beta0
+y = np.random.binomial(1, 1/(1 + np.exp(-logit)))
+
+# fit SER for marginal analysis
+serfit = logistic_ser_hermite(
+  coef_init = np.zeros((X.shape[0], 2)), 
+  X = X.astype(float), 
+  y = y.astype(float), 
+  offset = 0., 
+  prior_variance = 1.,
+  m = 1
+)
+# extract relevant info from SER
+marginal_results = dict(
+  lbf=np.array(serfit.fits.lbf),
+  effect=np.array(serfit.fits.beta)
+)
+
+gseafit = gsea(X, y, L=10)
+```
+
+
+```{r compute-cs}
+compute_cs <- function(alpha, coverage=0.95){
+  idx <- rev(order(alpha))
+  mass <- cumsum(alpha[idx])
+  last = which(mass >= coverage)[1]
+  cs <- idx[1:last]
+  return(list(cs=cs, alpha=alpha[cs], coverage = mass[last], target_coverage=coverage))
+}
+
+gseafit <- py$gseafit
+idx <- which(py$beta !=0)
+alpha <- py$gseafit$alpha
+cs <- purrr::map(1:nrow(alpha), ~compute_cs(alpha[.x,]))
+```
+
+
+```{r explore-cs}
+# the first 4 components have evidence of association.
+gseafit$log_bfs
+
+# the CSs fo the first 3 are singletons, 
+# while the CS for th 4th component has 10 gene sets
+purrr::map_int(cs, ~length(.x$cs))
+
+# the PIP of the top SNP in each CS
+purrr::map_dbl(cs, ~.x$alpha[1])
+
+# check if the top snp is causal
+purrr::map_int(cs, ~.x$cs[1]) %in% idx
+```
+
+We can see that each of the singleton CSs identify on of the "active" gene sets.
+The 4th CS captures one of the two remaining effects. The SNP with the top PIP is the causal SNP.
+The CSs corresponding to the other effects (L5-L10) are very large, containing thousands of GSs, and the maximum PIP is small ($< 0.1$). We also see the the log BF for the SER, which quantifies the evidence for any one SNP having an effect over the global null favor the null hypothesis. 
+
+```{r check-results}
+# check which CSs include which of the causal variables
+incidence <- do.call(rbind, purrr::map(1:10, ~as.integer(idx %in% cs[[.x]]$cs)))
+rownames(incidence) <- paste0('L', 1:nrow(incidence))
+colnames(incidence) <- paste0('GS', 1:ncol(incidence))
+incidence
+```
+
+We compare the results against a marginal (on GS at a time) analysis, which is typical for GSEA.
+The most direct comparison would be to the Baysian logistic regression with fixed prior variance.
+
+The GS discovered in `L1-3` correspond to the three strongest marginal effects.
+However, we see that the GS captures in `L4` has the 16th strongest marginal effect.
+We see that the causal GS that is not discovered in our analysis has the 144th strongest association, and a log BF of $\approx 2.77$, corresponding to a BF of $\approx 16$. Jeffreys proposed a threshold of $10$ for "strong" evidence, while Kass and Raftery later propose a treshold of $20$, so we will call this "moderately-strong" evidence of association. However, due to the multiple testing burden we judge it approporiate that this effect was not reported.
+
+```{r marginal-results}
+library(dplyr)
+
+marginal_analysis <- with(py$marginal_results, tibble::tibble(
+  GS = colnames(c2$X),
+  i = 1:ncol(c2$X),
+  lbf=lbf,
+  effect=effect
+))
+
+marginal_analysis %>%
+  mutate(causal = i %in% idx) %>%
+  arrange(desc(lbf)) %>%
+  mutate(rank = 1:n()) %>%
+  filter(causal)
+```
+Which causal gene sets are driving the association of the 4-15th top marginal gene sets?
+They all have substantial overlap with `M8520`, the top marginal enrichment.
+
+```{r}
+middle_gene_sets <- marginal_analysis %>%
+  mutate(causal = i %in% idx) %>%
+  arrange(desc(lbf)) %>%
+  mutate(ran = 1:n()) %>%
+  head(15) %>% tail(12) %>%
+  {.$i}
+
+Matrix::t(c2$X[,middle_gene_sets]) %*% (c2$X[, idx])
+```
+
+In this simulation, although the causal gene set are for genes upregulated in
+non-small cell lung cancers, we see that there are gene sets associated with immune response, cell cycle, and a host of other cancers. The data show overwhelming support for the top effect.
+Conditional on the first effect, the other gene sets are no longer predictive of inclusion in the list of genes provided. However, the extremely strong marginal enrichments in these other gene sets and cancer types would obscure this result.
+
+```{r}
+marginal_analysis %>%
+  arrange(desc(lbf)) %>%
+  head(15) %>%
+  rename(geneSet = GS) %>%
+  left_join(select(c2$geneSetDes, c(geneSet, description))) %>%
+  select(c(geneSet, description, lbf))
+```
+
+
+
+
+
+
+
+
+

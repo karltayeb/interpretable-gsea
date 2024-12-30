@@ -1,0 +1,5 @@
+# Preface {.unnumbered}
+
+Gene set enrichment analysis is ubiquituous in genetics and genomics research, providing a powerful tool for interpreting the genes that come out of e.g. differential expression analysis. However, the challenge of interpreting a long list of genes is often replaced with the challenge of interpreting a long list of gene sets.
+
+In this work we perform gene set enrichment analysis via sparse multiple regression. 

@@ -1,0 +1,27 @@
+project:
+  type: book
+
+book:
+  title: "Interpretable Gene Set Enrichment Analysis"
+  author: "Karl Tayeb"
+  date: "12/27/2024"
+  chapters:
+    - index.qmd
+    - notebooks/gsea_simulated_example/index.qmd
+    - notebooks/summary.qmd
+    - notebooks/references.qmd
+
+execute:
+  freeze: true
+  eval: false
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+  pdf:
+    documentclass: scrreprt
+
+
+
