@@ -9,6 +9,7 @@ book:
   chapters:
     - index.qmd
     - notebooks/gsea_simulated_example/index.qmd
+    - notebooks/pbmcs/index.qmd
     - notebooks/summary.qmd
     - notebooks/references.qmd
 
