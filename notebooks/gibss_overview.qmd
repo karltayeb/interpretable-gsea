@@ -1,0 +1,80 @@
+---
+title: "gibss_overview"
+format: html
+---
+
+# Introduction
+
+### A quick look at using the `gibss` python package
+
+We develop a fast and extensible implementation of GIBSS in python utilizing JAX for autodifferentiation and fast JIT compiled code. The goal will be to have the `gseasusie` software package automatically set up a python environment for `R` users, and make calls to the underlying python library via `reticulate`.
+
+Choose a python environment for `reticulate` to use
+
+```{r reticulate-setup}
+library(reticulate)
+use_virtualenv('gibss')
+```
+
+
+Here is a quick example showing how to use `gibss`
+
+```{python gibss-demo}
+from gibss.logisticprofile import logistic_ser_hermite, logistic_susie, fit_null
+import numpy as np
+
+# simulate some data, 100 variables, 10k observations
+X = np.random.normal(size=(100, 10000))
+x = X[0]
+y = np.random.binomial(1, p = np.exp(x-1)/(1 + np.exp(x-1))).astype(float)
+coef_init = np.zeros((X.shape[0], 2))
+
+
+# fit a null model
+nullfit = fit_null(y, 0.)
+
+# fit an SER
+serfit = logistic_ser_hermite(coef_init, X, y, 0.0, 1.0, 1)
+
+# fit SuSiE via GIBSS
+fit = logistic_susie(X, y, L=5, method='hermite', serkwargs=dict(m=1, prior_variance=1.0))
+```
+
+### GSEA example
+
+`gseasusie::load_gene_sets` is a helper function for getting gene sets from different sources in a unified format. It gets curated pathways from the `WebGestaltR`, MSigDb pathways from `msigdbr`.
+
+
+```{r load-c2}
+#devtools::install_github('karltayeb/gseasusie')
+c2 <- gseasusie:::load_msigdb_geneset_x('C2')
+```
+
+We get a flat list where each row is a `(gene, gene set)` pair.
+
+```{r}
+head(c2$geneSet)
+```
+We also have access to a human readable description of each gene-set
+
+```{r}
+head(c2$geneSetDes)
+```
+
+Finally, we have a sparse binary matrix encoding gene set membership. 
+
+```{r}
+dim(c2$X)
+```
+
+To perform gene set enrichment analysis using logistic SuSiE we will writer a helper function in python. `gibss` interface is designed to be modular and composable to streamline the development of
+new models, but it is not designed to have a particularly user friendly interface.
+
+We run logistic SuSiE with a fixed prior variance $\sigma^2=1$.
+We use `logisticprofile` module, where we perform logistic regression, maximizing over the intercept for each variable. 
+We compute the MAP estimate for each variable, and approximate the Bayes factor using the Laplace-MAP approximation, (as opposed to the Laplace-MLE) approximation. We make this choice because it is not uncommon to have gene sets that are either completely observed, or completely unobserved in the gene list. In this case the MLE does not exist and MLE based approximations can have unweildly behavior. The Laplace approximation at the MAP is equivalent to Gauss-Hermite quadrature (with a particular reparameterization) and $m=1$ quadrature points.
+
+Note that even with the optimized implementation things can be quite slow. 
+One strategy we are thinking about implementing is pre-screening with a score-based approximation to the Bayes factor. The idea is that we can quickly compute rough approximations to the Bayes factor using a score based approximation. For the promising results, we can follow up with a more fine grain calculation of the Bayes factor.
+
+My proposal for the estimation of the prior variance is to compute that MAP along a grid of prior variances, and interplate point estimates/Bayes factor approximations between these. This should not be much more expensive to compute because we can use the estimates from a fit at one setting of the prior variance to initialize the optimization at the next setting of the prior variance. This "warm start" initialization has the advantage of introducing computational stability as well.

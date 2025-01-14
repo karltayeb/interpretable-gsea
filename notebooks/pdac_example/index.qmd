@@ -1,0 +1,388 @@
+---
+execute:
+  eval: true 
+  cache: true
+---
+
+# GSEA with logistic SuSiE, Yusha's PDAC example
+
+```{r reticulate-setup}
+library(reticulate)
+library(dplyr)
+use_virtualenv('gibss')
+```
+
+These are a list of genes symbols from an analysis of PDAC tumors. The 
+
+```{r load gene-lists}
+# all genes included in the analysis
+gene_background <- read.csv('../../data/yusha_sc_tumor/pdac/gene_list.txt', header = F)$V1
+# a list of genes that are interesting
+gene_list <- read.csv('../../data/yusha_sc_tumor/pdac/factor10.txt', header = F)$V1
+head(gene_list)
+```
+
+
+
+### Converting gene labels
+The gene sets are sets of ENTREZID's
+```{r load gene-lists}
+c2 <- gseasusie:::load_msigdb_geneset_x('C2')
+head(c2$geneSet)
+```
+There are many standards for naming genes.
+A first step is making sure that your gene list and gene sets are in the same form.
+`gseasusie` has helper functions for converting between gene labels. 
+
+We can use `org.Hs.eg.db` to convert between gene labels.
+Here are the columns in the database:
+
+```{r}
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+columns(org.Hs.eg.db)
+```
+
+```{r}
+#' filter with messages
+filter2 <- function(tbl, msg, ...){
+  start <- nrow(tbl)
+  tbl <- dplyr::filter(tbl, ...)
+  end <- nrow(tbl)
+  message(glue::glue('{msg}: removed {start-end} rows'))
+  return(tbl)
+}
+
+# convert background list to ENTREZIDs
+gene_table <- annotations_orgDb <- AnnotationDbi::select(
+  org.Hs.eg.db::org.Hs.eg.db, # database
+  keys = gene_background,  # data to use for retrieval
+  columns = c("SYMBOL", "ENTREZID"), # information to retreive for given data
+  keytype = "SYMBOL") %>%
+  filter2('Has ENTREZID', !is.na(ENTREZID)) %>%
+  filter2('One-to-one mappings', !duplicated(SYMBOL))
+
+# get gene list and background in ENTREZID
+gene_background_entrezid <- gene_table$ENTREZID
+gene_list_entrezid <- gene_table %>% 
+  filter2('Subsetting to gene list', SYMBOL %in% gene_list) %>%
+  {.$ENTREZID}
+```
+
+To run our analysis we will need a binary matrix `X` where each row corresponds to a gene set, and each column corresponds to a gene. $X_{ij} = 1$ if gene $i$ is in gene set $j$.
+
+### Making gene set matrix
+
+Here we show how to use gene sets provided in the `msigdbr` package to construct 
+a design matrix to be used with logistic SuSiE. 
+```{r}
+convertGeneSet <- function(geneSet, min.size = 1){
+  geneSet %>%
+    dplyr::select(geneSet, gene) %>%
+    dplyr::group_by(geneSet) %>%
+    dplyr::filter(dplyr::n() >= min.size) %>%
+    tidyr::chop(gene) %>% dplyr::ungroup() %>%
+    gseasusie:::tibble2namedlist()
+}
+
+make_regression_data <- function(gene_list, gene_background, category = 'C2'){
+  # X is a gene set x gene matrix. X_ij = 1 if gene j belongs to GS i
+  X <- msigdbr::msigdbr(species="Homo sapiens", category = 'C2') %>%
+    filter2('background genes', gene_symbol %in% gene_background) %>%
+    dplyr::rename(gene = gene_symbol, geneSet=gs_id) %>%
+    dplyr::select(gene, geneSet) %>%
+    convertGeneSet(min.size = 1) %>% # convert tibble to named list geneset: {genes}
+    gseasusie:::geneSet2X() %>% # convert named list to a binary matrix
+    Matrix::t() # for SuSiE we need gene sets x genes.
+  y <- as.integer(colnames(X) %in% gene_list)
+  return(list(X=X, y=y))
+}
+
+regression_data <- make_regression_data(gene_list, gene_background, 'C2')
+```
+
+```{r}
+genes_in_set <- (X %*% y)[,1]
+set_size <- Matrix::rowSums(X)
+```
+
+Here is a useful contex manager for timing python code.
+
+```{python}
+from time import perf_counter
+from time import sleep
+from contextlib import contextmanager
+from typing import Callable
+
+@contextmanager
+def catchtime(verbose=True) -> Callable[[], float]:
+    t1 = t2 = perf_counter() 
+    yield lambda: t2 - t1
+    t2 = perf_counter() 
+    if verbose:
+      print(f'{(t2 - t1):.3f} seconds elapsed')
+
+with catchtime() as t:
+    sleep(0.01)
+```
+
+This is how you run logistic SuSiE in justa few lines of Python code.
+
+```{python}
+import numpy as np
+from gibss.utils import ensure_dense_and_float
+from gibss.logistic import fit_logistic_susie2
+
+X = ensure_dense_and_float(r.X)
+y = ensure_dense_and_float(np.array(r.y))
+
+with catchtime() as t:
+  fit = fit_logistic_susie2(X, y, L=10, maxiter=20)
+  
+with catchtime() as t2:
+  ser = fit_logistic_susie2(r.X, y, L=1, maxiter=1)
+```
+
+```{r}
+fit_logistic_susie <- function(X, y){
+  gibss <- reticulate::import('gibss')
+  np <- reticulate::import('numpy')
+  fit = gibss$logistic$fit_logistic_susie2(X, np$array(y), L=10L, maxiter=20L)
+  ser = gibss$logistic$fit_logistic_susie2(X, np$array(y), L=1L, maxiter=1L)
+  return(list(fit=fit, ser=ser))
+}
+
+# all genes included in the analysis
+gene_background <- read.csv('../../data/yusha_sc_tumor/pdac/gene_list.txt', header = F)$V1
+
+# Load gene list for a particular pdac factor
+#' ex load_pdac_gene_list('factor10.txt')
+load_pdac_gene_list <- function(factor){
+  gene_list <- read.csv(glue::glue('../../data/yusha_sc_tumor/pdac/{factor}'), header = F)$V1
+  return(gene_list)
+}
+
+#' Fit logistic SuSiE to PDAC factor
+#' 
+#' load pdac factor and fit logistic SuSiE with L=10 for at most 20 iterations.
+#' @param factor an integer between 1 and 32
+fit_susie_pdac_factor <- function(factor){
+  factor %>% 
+    load_pdac_gene_list() %>%
+    {make_regression_data(., gene_background, 'C2')} %>%
+    {fit_logistic_susie(.$X, .$y)}
+}
+
+fit <- fit_susie_pdac_factor('factor10.txt')
+factors <- list.files('../../data/yusha_sc_tumor/pdac/', pattern = 'factor*')
+fits <- purrr::map(factors, fit_susie_pdac_factor)
+names(fits) <- purrr::map_chr(factors, ~stringr::str_split(.x, pattern = '\\.')[[1]][1])
+```
+
+Save the results in python, because `fits` is only holding pointers to the python object it won't work if we call `saveRDS`.
+If the python object can be converted to pure R types this would not be an issue. 
+It may be good to format the output in a way that we get this type converstion.
+
+```{python}
+import pickle
+fits = r.fits
+pickle.dump(fits, open('pdac_c2_fits.pkl', 'wb'))
+fits2 = pickle.load(open('pdac_c2_fits.pkl', 'rb'))
+```
+
+Here is a function for fitting a residual SER.
+This is meant to test how much is being left on the table after accounting for the effects estimated by SuSiE.
+
+```{python}
+def compute_residual_ser(X, y, fit):
+  from gibss.logistic import logistic_ser_hermite
+  from jax.tree_util import tree_map
+  X = ensure_dense_and_float(X)
+  y = np.array(y)
+  psi = (fit.alpha * fit.beta).sum(0) @ X + fit.fixed_effects[0]
+  residual_ser = logistic_ser_hermite(
+    np.zeros((X.shape[0], 1)), 
+    X, y, psi, 
+    m=1, prior_variance=10, 
+    newtonkwargs=dict(maxiter=100, alpha=0.8, gamma=-0.1)
+  )
+  residual_ser_np = tree_map(np.array, residual_ser)
+  return residual_ser_np
+```
+
+
+```{r}
+fit_residual_ser_pdac_factor <- function(factor, fits){
+  factor %>% 
+    {load_pdac_gene_list(paste0(., '.txt'))}%>%
+    {make_regression_data(., gene_background, 'C2')} %>%
+    {py$compute_residual_ser(.$X, .$y, fits[[factor]]$fit)}
+}
+
+factors2 <- purrr::map_chr(factors, ~stringr::str_split(.x, pattern = '\\.')[[1]][1]) # remove the .txt
+residual_fits <- purrr::map(factors2, ~fit_residual_ser_pdac_factor(.x, fits))
+names(residual_fits) <- factors2
+```
+
+
+```{r}
+fits2 <- py$fits2
+fits2$factor11$fit$lbf_ser
+
+
+
+
+library(ggplot2)
+
+volcano_plot <- function(fit, ser){
+  # add 1 to cs for 1 indexing.
+  cs_tbl <- purrr::map_dfr(1:10, ~list(
+    cs=list(fit$credible_sets[[.x]]$cs + 1), 
+    alpha = list(fit$credible_sets[[.x]]$alpha),
+    lbf_ser = fit$lbf_ser[.x])
+  )
+  # filter down to CSs of components with evidence of non-zero effect
+  cs_tbl <- cs_tbl %>%
+    mutate(component = purrr::map_chr(1:n(), ~glue::glue('L{.x}'))) %>%
+    filter(lbf_ser > 1) %>%
+    tidyr::unnest_longer(c(cs, alpha)) %>%
+    rename(gs_idx = cs)
+  
+  # make table of marginal effects and logBFs (could be other summary of marginal effect/significance)
+  marginal_tbl <- tibble(
+    lbf = ser$lbf[1,],
+    beta = ser$beta[1,]) %>%
+    mutate(gs_idx = 1:n()) 
+    
+  # annotate gene sets with CS membership
+  marginal_tbl %>%
+    ggplot(aes(x=beta, y=lbf)) + geom_point() +
+    geom_point(mapping=aes(x=beta, y=lbf, color=as.factor(component), size=5), data=right_join(marginal_tbl, cs_tbl))
+}
+```
+
+```{r}
+get_fit_and_ser <- function(factor){
+  list(fit=fits2[[factor]]$fit, ser=fits2[[factor]]$ser)
+}
+
+volcano_plot_pdac <- function(factor){
+  with(get_fit_and_ser(factor), volcano_plot(fit, ser))
+}
+
+plots <- purrr::map(factors2, volcano_plot_pdac)
+names(plots) <- factors2
+```
+
+```{r}
+plots$factor10
+```
+
+```{r}
+plots$factor11
+```
+
+```{r}
+plots$factor15
+```
+
+```{r}
+plots$factor7
+```
+```{r}
+residual_fits$factor7$lbf_ser
+```
+
+
+```{python}
+fit.credible_sets[0]
+```
+
+```{python}
+fit.credible_sets[1]
+```
+
+```{python}
+fit.credible_sets[2]
+```
+
+```{python}
+fit.credible_sets[3]
+```
+
+```{python}
+fit.credible_sets[4]
+```
+
+```{r}
+ser <- py$ser
+fit <- py$fit
+fit$credible_sets[[1]]$alpha
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+beta <- as_tibble(fit$beta, .name_repair='unique')
+colnames(beta) <- paste0('L', 1:10)
+```
+
+
+
+```{python}
+from gibss.logisticprofile import fit_logistic_susie
+
+X = ensure_dense_and_float(r.X)
+y = ensure_dense_and_float(np.array(r.y))
+
+with catchtime() as t:
+  forward2d = fit_logistic_susie(X, y, L=10, maxiter=1, cleanup=False)
+  
+
+import jax
+single = jax.tree.map(lambda x: x[0, 0], forward2d[0].fits.state)
+np.bincount(forward2d[0].fits.state.iter.flatten())
+```
+
+
+```{python}
+fowardfit.lbf_ser
+```
+
+```{r}
+Matrix::t(X)
+```
+
+```{r}
+tictoc::tic('fitting SER')
+serfit <- gibss$logisticprofile$fit_logistic_susie(X, y, L=1L, maxiter=1L)
+tictoc::toc()
+```
+
+```{r}
+fit <- gibss$logisticprofile$fit_logistic_susie(Matrix::t(X), y, L=10, maxiter=1, method='hermite')
+```
+
+
+
+```{r}
+X <- c2$geneSet %>%
+  #filter2('Subset GSs down to background', gene %in% gene_background_entrezid) %>%
+  gseasusie:::convertGeneSet() %>%
+  gseasusie:::geneSet2X()
+X <- c2$X[rownames(c2$X) %in% gene_background_entrezid,]
+```
+
+
+
+```{r}
+
+```
+
+
+```{r load gene-lists}
+# BiocManager::install("org.Hs.eg.db")
+gseasusie:::generate_geneidmap(gene_names, from='SYMBOL', to='ENTREZID')
+gseasusie::coerce_list
+```
+

@@ -1,0 +1,62 @@
+---
+title: "newton"
+format: html
+---
+
+```{python}
+from gibss.logisticprofile import nloglik, hermite_factory
+from gibss.newton import NewtonState, newton_step
+from functools import partial
+import jax
+
+make_fun = lambda i: partial(nloglik, y=y, x=X[i], offset=0., prior_variance=1.)
+
+fun = make_fun(5)
+grad = jax.grad(fun)
+hess = jax.hessian(fun)
+
+x0 = np.zeros(2)
+f = fun(x0)
+g = grad(x0)
+H = hess(x0)
+direction = -jax.scipy.linalg.solve(H, g)
+
+alpha = 0.5
+gamma = -np.inf
+maxiter = 10
+tol = 1e-5
+
+state = NewtonState(x0, f, g, H, direction, 1.0, np.inf, tol, False, alpha, gamma, maxiter, 0)
+
+print_state = lambda state: print(f'x = {state.x}, f = {state.f}, nd = {state.nd}')
+```
+
+
+```{python}
+state = NewtonState(x0, f, g, H, direction, 1.0, np.inf, tol, False, alpha, 0., maxiter, 0)
+for i in range(10):
+  state = newton_step(state, fun, grad, hess)
+  print_state(state)
+```
+
+```{python}
+state = NewtonState(x0, f, g, H, direction, 1.0, np.inf, tol, False, alpha, 0, maxiter, 0)
+for i in range(10):
+  state = newton_step(state, fun, grad, hess)
+  print_state(state)
+```
+
+```{python}
+vhermite = jax.vmap(
+  partial(hermite_factory(1), 
+    prior_variance = 1., 
+    maxiter=maxiter,
+    tol=tol,
+    alpha=alpha,
+    gamma=gamma),
+  in_axes=(0, 0, None, None, None))
+fits = vhermite(coef_init, X, y, np.zeros(10000), nullfit)
+
+f1 = logistic_ser_hermite(coef_init, X, y, np.zeros(10000), 1., 1, gamma=-np.inf)
+f2 = logistic_ser_hermite(coef_init, X, y, np.zeros(10000), 1., 1, gamma=-0.1)
+```

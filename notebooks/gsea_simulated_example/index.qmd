@@ -8,6 +8,11 @@ execute:
 
 `gseasusie::load_gene_sets` is a helper function for getting gene sets from different sources in a unified format. It gets curated pathways from the `WebGestaltR`, MSigDb pathways from `msigdbr`.
 
+```{r reticulate-setup}
+library(reticulate)
+use_virtualenv('gibss')
+```
+
 
 ```{r load-c2}
 #devtools::install_github('karltayeb/gseasusie')
@@ -35,39 +40,14 @@ dim(c2$X)
 
 Point `reticulate` to a virtual environment with the `gibss` package installed.
 
-```{r reticulate-setup}
-library(reticulate)
-use_virtualenv('gibss')
-```
 
-```{python gibss-helper-funs}
-from dataclasses import dataclass
-import numpy as np
-from gibss.logisticprofile import logistic_susie, logistic_ser_hermite
-
-@dataclass
-class GSEARes:
-  alpha: np.ndarray
-  effects: np.ndarray
-  log_bfs: np.ndarray
-  
-get_alpha = lambda fit: np.array([c.alpha for c in fit.components])
-get_beta = lambda fit: np.array([c.fits.beta for c in fit.components])
-get_lbf = lambda fit: np.array([c.lbf_ser for c in fit.components])
-
-def gsea(X, y, L=5, prior_variance = 1, maxiter = 10, tol=1e-3):
-  # TODO: check types
-  fit = logistic_susie(
-    X.astype(float), y.astype(float),
-    L=L, method='hermite',
-    serkwargs=dict(m=1, prior_variance=1.0)
-  )
-  return GSEARes(get_alpha(fit), get_beta(fit), get_lbf(fit))
-```
 
 In this simulation we select 5 random gene sets from the MSigDB C2 ("Curate gene sets") to be enriched. Genes have background log odds of $-3$ while membership in each gene set increases the log odds by two. The vast majority of genes in this simulation belong to exactly $1$ or $0$ gene sets. 
 
+
 ```{python main-simulation}
+import numpy as np
+# a simple simulation
 np.random.seed(1)
 X = r.c2['X'].toarray().T
 beta0 = -3
@@ -75,25 +55,25 @@ beta = np.zeros(X.shape[0])
 beta[np.random.choice(beta.size, 5, replace=False)] = 2.
 logit = beta @ X + beta0
 y = np.random.binomial(1, 1/(1 + np.exp(-logit)))
-
-# fit SER for marginal analysis
-serfit = logistic_ser_hermite(
-  coef_init = np.zeros((X.shape[0], 2)), 
-  X = X.astype(float), 
-  y = y.astype(float), 
-  offset = 0., 
-  prior_variance = 1.,
-  m = 1
-)
-# extract relevant info from SER
-marginal_results = dict(
-  lbf=np.array(serfit.fits.lbf),
-  effect=np.array(serfit.fits.beta)
-)
-
-gseafit = gsea(X, y, L=10)
 ```
 
+
+```{r fit-gibss}
+gibss <- reticulate::import('gibss')
+
+# get simulation from python session
+# just because we want to keep the 
+X <- py$X
+y <- py$y
+
+tictoc::tic('fitting SER')
+serfit <- gibss$logisticprofile$fit_logistic_susie(X, y, L=1L, maxiter=1L)
+tictoc::toc()
+
+tictoc::tic('fitting SuSiE')
+fit <- gibss$logisticprofile$fit_logistic_susie(X, y, L=10, method='hermite', maxiter=10)
+tictoc::toc()
+```
 
 ```{r compute-cs}
 compute_cs <- function(alpha, coverage=0.95){
@@ -104,16 +84,16 @@ compute_cs <- function(alpha, coverage=0.95){
   return(list(cs=cs, alpha=alpha[cs], coverage = mass[last], target_coverage=coverage))
 }
 
-gseafit <- py$gseafit
+gseafit <- fit
 idx <- which(py$beta !=0)
-alpha <- py$gseafit$alpha
+alpha <- gseafit$alpha
 cs <- purrr::map(1:nrow(alpha), ~compute_cs(alpha[.x,]))
 ```
 
 
 ```{r explore-cs}
 # the first 4 components have evidence of association.
-gseafit$log_bfs
+gseafit$lbf
 
 # the CSs fo the first 3 are singletons, 
 # while the CS for th 4th component has 10 gene sets
@@ -148,12 +128,12 @@ We see that the causal GS that is not discovered in our analysis has the 144th s
 ```{r marginal-results}
 library(dplyr)
 
-marginal_analysis <- with(py$marginal_results, tibble::tibble(
+marginal_analysis <- tibble::tibble(
   GS = colnames(c2$X),
   i = 1:ncol(c2$X),
-  lbf=lbf,
-  effect=effect
-))
+  lbf=serfit$lbf[1,],
+  effect=serfit$effect[1,]
+)
 
 marginal_analysis %>%
   mutate(causal = i %in% idx) %>%
