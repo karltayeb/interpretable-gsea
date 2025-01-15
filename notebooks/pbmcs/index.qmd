@@ -1,218 +1,126 @@
 ---
-title: "Draft workflow"
+title: "PBMC GSEA Example"
 format: html
 execute:
-  eval: true
+  eval: false
 ---
 
-The point of this document is to demonstrate the workflow of working with the `gseasusie` package. 
+This document contains the code used to run logistic SuSiE for 5 immune celltypes isolated from PBMCs via FACS. We perform enrichment analysis using a gene list composed of the top 10% of differentially expressed genes (by $p$-value), and gene sets from the Gene Ontology available through the `WebGestaltR` package. 
 
-The first section is specific to the data at hand-- ultimately we will assume that the user can provide a list of interesting genes ("gene list") and a list of background genes ("background"). 
+## Running logistic SuSiE on the PBMC data
 
-The second part exposes how the `gseasusie` package will ineract with the `gibss` Python package which implements logistic SuSiE. A critical piece of `gseasusie` and it's documentation will be to guide users through setting up a pyton environment to run `gibss`.
-
-Ultimately, we will want to report a list of credible sets + information about enriched gene sets + information about genes in enriched gene sets. We prototype a nested interactive table. It may also be good to develop some visualization tools.
-
-## Load and prepare data
-
-Load the data
 ```{r}
-library(dplyr)
-# loads objects `deseq`, `de`, `genes`
-load('../../data/pbmc-purified/deseq2-pbmc-purified.RData')
-names(deseq)
+source('notebooks/pbmcs/functions.R')
+reticulate::use_virtualenv('gibss')
+data <- prep_pbmc_data()
 ```
 
-The `deseq` results are a table where each row corresponds to a gene.
-This is just some light processing of these data. We add the celltype as a column, 
-and add a column mapping Ensemble gene IDs to Entrez gene IDs.
-
 ```{r}
-library(tidyverse)
-
-#' add columns for gene name and cell type to the deseq results
-celltype <- names(deseq)[[1]]
-add_celltype <- function(celltype){
-  deseq[[celltype]] %>%
-    as.data.frame() %>%
-    rownames_to_column(var = 'gene') %>%
-    mutate(celltype = celltype)
+#' function for getting the gene set data
+load_regression_data <- function(data, celltype, quantile, db_name){
+  db <- WebGestaltR::loadGeneSet(enrichDatabase = db_name)
+  data %>%
+    make_gene_list(celltype, q) %>%
+    gseasusie:::prepare_data()
 }
 
-# make big de table
-de <- map_dfr(names(deseq), add_celltype)
-
-# gene label mapping
-hs <- org.Hs.eg.db::org.Hs.eg.db
-gene_symbols <- unique(de$gene)
-symbol2entrez <- AnnotationDbi::select(
-  hs, keys=gene_symbols,
-  columns=c('ENTREZID', 'ENSEMBL'),
-  keytype = 'ENSEMBL')
-
-#' helper function to assign names to a list in a tidy pipeline
-add_names = function(l, n){
-  names(l) <- n
-  return(l)
-}
-
-# organize data into a list of tibbles, one for each cell type
-data <- de %>%
-  dplyr::rename('ENSEMBL' = gene) %>%
-  left_join(symbol2entrez, by='ENSEMBL') %>%
-  relocate(ENTREZID, .after=ENSEMBL) %>%
-  mutate(  # set default columns
-    beta = log2FoldChange,
-    se = lfcSE,
-    threshold.on = padj
-  ) %>%
-  group_by(celltype) %>%
-  group_map(~ .x, .keep = T) %>%
-  add_names(map_chr(., ~pluck(.x, 'celltype')[1]))
-```
-
-From here we can construct the gene list and background.
-We look at the `CD19+B` cells. We obtain a list of differentially expressed genes by including all genes with `padj < 1e-8` (5936/14929) genes. 
-
-```{r}
-de <- data$`CD19+ B` %>%
-  filter(!is.na(ENTREZID)) %>%
-  filter(!duplicated(ENTREZID))
-
-# get gene list and background
-list <- de %>% filter(padj < 1e-8) %>% {.$ENTREZID}
-background <- de$ENTREZID
-```
-
-## Running GSEA
-
-
-The goal is to have a turn-key interface for performing GSEA with logistic SuSiE.
-The user should only need to provide a gene list `list`, a background set `background`, and the name of a gene set database (e.g. `GO Biological Processes'). 
-
-### Working with python
-
-`karltayeb/gibss` is a python package implementing logistic SuSiE. 
-We assume access to a virtual environment with `gibss` installed.
-
-```{r reticulate-setup}
-library(reticulate)
-use_virtualenv('gibss')
-```
-
-Here is a light wrapper for `gibss.logistic_sparse.fit_logistic_susie2`
-which is a fast implementation of logistic SuSiE which can exploit the sparsity of the gene to gene-set map.
-
-```{python}
-import numpy as np
-from scipy import sparse
-from gibss.logistic_sparse import fit_logistic_susie2
-from jax.tree_util import tree_map
-
-def logistic_susie_gsea(X, y):
-  X_sp = sparse.csr_matrix(X)
-  y = np.array(y)
-  fit = fit_logistic_susie2(X_sp, y, L=10, maxiter=50, tol=1e-6)
-  fit2 = fit._asdict()
-  return fit2
-```
-
-### Handling gene sets
-
-There are a number of packages and resources for getting gene sets.
-These data typically arrive as a table where each row corresponds to a `(gene set, gene)` pair. All we need to do is filter down to the background genes and then convert this table into a binary gene set by gene membership matrix `X`. Then we take the gene list and construct a binary response `y`.
-
-```{r}
-#' Construct gene set matrix out of gene set table
-#' @param tbl a tibble that has at least two columns: `geneSet` and `gene`
-#' @returns a sparse gene_set x genes membership matrix where
-#'          gene set and gene names stored in `colnames` and `rownames` respectively.
-construct_geneset_matrix <- function(db){
-  tbl <- db %>%
-    mutate(geneSetIdx = vctrs::vec_group_id(geneSet),
-           geneIdx = vctrs::vec_group_id(gene))
-  geneMapping <- tbl %>%
-    dplyr::select(c(gene, geneIdx)) %>%
-    unique()
-  geneSetMapping <- tbl %>%
-    dplyr::select(c(geneSet, geneSetIdx)) %>%
-    unique()
-  X <- tbl %>%
-    {Matrix::sparseMatrix(.$geneIdx, .$geneSetIdx, x=1.)} %>%
-    Matrix::t()
-  rownames(X) <- geneSetMapping$geneSet
-  colnames(X) <- geneMapping$gene
-  return(list(X=X, geneSetMapping=geneSetMapping, geneMapping=geneMapping, geneSets=tbl))
-}
-
-#' make X and y for logistic SuSiE
-prepare_data <- function(list, background, db){
-  # get genes included in analysis, record which are excluded
-  genes_in_analysis <- intersect(background, unique(db$gene))
-  genes_excluded <- setdiff(background, genes_in_analysis)
-  
-  # construct X
-  X <- db %>%
-    dplyr::filter(gene %in% genes_in_analysis) %>%
-    construct_geneset_matrix()
-  X$geneSets <- X$geneSets %>% 
-    mutate(geneInList = gene %in% list)
-  # construct y
-  y <- as.numeric(colnames(X$X) %in% list)
-  return(c(X, list(y=y, included = genes_in_analysis, excluded=genes_excluded)))
+#' driver function for running logistic SuSiE on pbmc data + webgestalt gene sets
+driver <- function(celltype, q, db, path){
+  print("I'm driving here!")
+  data %>%
+    make_gene_list(celltype, q) %>%
+    {gseasusie::fit_gsea_susie_webgestalt(
+      .$gene_list, 
+      .$gene_background, 
+      db,
+      tol=1e-5,
+      maxiter=100,
+      alpha=0.5,
+      gamma=0.0
+    )} %>%
+    save_model(path=path)
+  return(T)
 }
 ```
 
-
-### Running the GSEA
-
-With the functions defined above we can run our GSEA analysis with a few lines of code in just a few seconds.
+Here is an example of how to use the driver function.
 
 ```{r}
-# here is an example of how to get gene sets from WebGestaltR
-#' Fit logistic SuSiE using gene sets available from WebGestaltR
-#' @param list a list of interesting genes
-#' @param background a list of background genes
-#' @param enrichDatabase a database of genesets available in `WebGestaltR`, see `WebGestaltR::listGeneSet()`
-#' @returns a list with three items `$fit` `$data` and `$time`. 
-fit_gsea_susie_webgestalt <- function(list, backgrround, enrichDatabase = 'geneontology_Biological_Process'){
-  gsdb <- WebGestaltR::loadGeneSet(enrichDatabase = enrichDatabase)
+#| eval: false
+# the driver function fits the model and saves it, just returns true
+driver(
+  'CD14+ Monocyte', 
+  0.1, 
+  'geneontology_Biological_Process',
+  'notebooks/pbmcs/results/cd14plusmonocyte/geneontology_Biological_Process/q=0.1.rds'
+)
+# load the results. Contains $fit, $data, $time
+res <- readRDS('notebooks/pbmcs/results/cd14plusmonocyte/geneontology_Biological_Process/q=0.1.rds')
+```
 
-  time <- tictoc::tic('Finding complementary enrichments in GO-BP...')
-  fit <- gsdb$geneSet %>%
-    prepare_data(list, background, .) %>%
-    {list(fit=py$logistic_susie_gsea(.$X, .$y), data=.)}
-  tictoc::toc()
-  fit$time <- time
-  fit$data$X <- NULL
-  return(fit)
+Now we run logistic SuSiE using the top 10% of genes in each celltype. 
+We rerun the analysis for the gene ontology subsets available through the `WebGestaltR` package. `WebGestaltR` offers various subsets of the GO, e.g. `geneontology_Biological_Process`, and an abridged version `geneontology_Biological_Process_noRedundant`.
+
+```{r}
+celltypes <- names(data)
+celltypes_sanitized <- c('cd14plusmonocyte', 'cd19plusb', 'cd34plus', 'cd56plusnk', 'tcell')
+quantiles <- c(0.1)
+db <- c(
+  'geneontology_Biological_Process', 
+  'geneontology_Biological_Process_noRedundant', 
+  'geneontology_Cellular_Component', 
+  'geneontology_Cellular_Component_noRedundant', 
+  'geneontology_Molecular_Function', 
+  'geneontology_Molecular_Function_noRedundant'
+)
+
+config <- tidyr::crossing(
+  tibble(celltype = celltypes, celltype_sanitized=celltypes_sanitized),
+  q=quantiles,
+  db = db
+)
+```
+
+
+```{r}
+make_path <- function(celltype_sanitized, db, q){
+  glue::glue('notebooks/pbmcs/results/{celltype_sanitized}/{db}/q={q}.rds')
 }
 
-fit <- fit_gsea_susie_webgestalt(list, background, 'geneontology_Biological_Process')
+config %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(path = make_path(celltype_sanitized, db, q)) %>%
+  dplyr::mutate(run=driver(celltype, q, db, path))
 ```
 
-## Summarizing output
+### Processing model fits
 
-Although `logistic_susie_gsea` is a python function, all it's output is of a standard type that can be handled with `reticulate`'s automatic type conversions. We can work with the result like a pure `R` object.
+In order to present the GSEA results in a more digestable format we take the SuSiE output and put it into a nested table that can be viewed conveniently in the browser.
+For each experiment (gene list + gene set database) the table has three levels.
 
-```{r}
-# confirm that we can save/load as an RDS
-saveRDS(fit, 'test.rds')
-fit <- readRDS('test.rds')
-```
+1. The top level has information about each component of the model.
+2. The second level reports information on the top gene sets in the the components (the 95% credible set)
+3. The third level reports information on the genes in each gene set.
 
-Here we organize the component, gene-set, and gene level information into a nested dataframe
-that can be drilled into by users. This is a draft, the information provided at each level should be considered.
+Take a look at the next section for the results.
 
 ```{r}
 make_cs_tbl_single <- function(fit, l){
   cs <- fit$fit$credible_sets[[l]]
   tidyr::as_tibble(cs) %>%
-    mutate(
-      geneSetIdx = cs - 1, 
-      cs = paste0('L', l),
+    dplyr::mutate(
+      geneSetIdx = cs + 1, 
+      component = paste0('L', l),
       lbf_ser = fit$fit$lbf_ser[[l]]
-    )
+    ) %>%
+    dplyr::select(-cs) %>%
+    dplyr::left_join(fit$data$geneSets) %>%
+    dplyr::group_by(component, geneSet) %>%
+    dplyr::mutate(
+      geneSetSize = n(),
+      propInList = mean(geneInList)
+    ) %>%
+    dplyr::ungroup()
 }
 
 make_cs_tbl <- function(fit, min_lbf_ser=log(10.)){
@@ -221,191 +129,91 @@ make_cs_tbl <- function(fit, min_lbf_ser=log(10.)){
   purrr::map_dfr(include_components, ~make_cs_tbl_single(fit, .x))
 }
 
-cs_tbl <- make_cs_tbl(fit, 1.)
-
-#' organize gene level details
-arrange_details <- function(tbl){
-  tbl %>% 
-    group_by(geneSet) %>%
-    mutate(geneSetSize = n(), propInList = mean(geneInList)) %>%
-    ungroup() %>%
-    select(c(geneSet, alpha, description, geneSetSize, propInList, gene, geneInList)) %>%
-    nest(.by = c(geneSet, alpha, description, geneSetSize, propInList))
+make_component_tbl_single <- function(fit, l){
+  # component, gene set, alpha, beta, lbf, prior_variance
+  with(fit$fit, tibble(
+    component=glue::glue('L{l}'), 
+    geneSet = fit$data$geneSetMapping$geneSet, 
+    alpha=alpha[l,],
+    beta=beta[l,], 
+    lbf=lbf[l,], 
+    prior_variance=prior_variance[l]))
 }
 
-# make nested table: components -> geneSets -> genes
-cs_tbl_nested <- cs_tbl %>%
-  left_join(fit$data$geneSets) %>%
-  nest(.by= c(cs, size, coverage, target_coverage, lbf_ser)) %>%
-  rowwise() %>%
-  mutate(data = list(arrange_details(data)))
-```
-
-```{r}
-library(reactable)
-make_get_details <- function(tbl){
-  if('data' %in% names(tbl)){
-    get_details <- function(index){
-      deets <- tbl[index,]
-      htmltools::div(style = "padding: 1rem",
-        reactable(
-          dplyr::select(deets$data[[1]], -any_of('data')),
-          details = make_get_details(deets$data[[1]]),
-          outlined = TRUE,
-          defaultColDef = colDef(format=colFormat(digits=3))
-        )
-      )
-    }
-  } else{
-    get_details <- NULL
-  }
-  return(get_details)
+make_component_tbl <- function(fit, min_lbf_ser = log(10)){
+  include_components <- which(fit$fit$lbf_ser > min_lbf_ser)
+  purrr::map_dfr(include_components, ~make_component_tbl_single(fit, .x))
 }
-reactable(
-  select(cs_tbl_nested, -any_of('data')),
-  details = make_get_details(cs_tbl_nested),
-  defaultColDef = colDef(format=colFormat(digits=3))
-)
-```
-
-
-## In the `gseasusie` package
-
-The functions above have been added to the `gseasusie` package.
-
-```{r}
-#devtools::install_local('~/R/gseasusie/', force=T)
-fit <- gseasusie::fit_gsea_susie_webgestalt(list, background, 'geneontology_Biological_Process')
 ```
 
 
 ```{r}
-#| eval: False
-enrichDatabase = 'geneontology_Biological_Process_noRedundant'
+celltypes_sanitized_list <- as.list(celltypes_sanitized)
+names(celltypes_sanitized_list) <- celltype
 
-db <- WebGestaltR::loadGeneSet(enrichDatabase = enrichDatabase)
-
-fit2$credible_sets
-fit2$lbf_ser
-```
-
-
-```{r}
-#| eval: False
-convertGeneSet <- function(geneSet, min.size = 1){
-  geneSet %>%
-    dplyr::select(geneSet, gene) %>%
-    dplyr::group_by(geneSet) %>%
-    dplyr::filter(dplyr::n() >= min.size) %>%
-    tidyr::chop(gene) %>% dplyr::ungroup() %>%
-    gseasusie:::tibble2namedlist()
+load_model <- function(celltype, q, db){
+  # load fit model
+  path <- glue::glue('notebooks/pbmcs/results/{celltypes_sanitized_list[[celltype]]}/{db}/q={q}.rds')
+  message(glue::glue('loading fit from: {path}'))
+  fit <- readRDS(path)
+  return(fit)
 }
 
-# load gobp
-gobp <- gseasusie:::load.webGestalt.geneSet(
-  'geneontology_Biological_Process')
-# X is a gene set x gene matrix. X_ij = 1 if gene j belongs to GS i
-X <- gobp$geneSet %>%
-  filter(gene %in% background) %>%
-  dplyr::select(gene, geneSet) %>%
-  convertGeneSet(min.size = 1) %>% # convert tibble to named list geneset: {genes}
-  gseasusie:::geneSet2X() %>% # convert named list to a binary matrix
-  Matrix::t() # for SuSiE we need gene sets x genes.
-
-y <- as.integer(colnames(X) %in% list)
-```
-
-```{r}
-#| eval: False
-
-fit_logistic_susie <- function(X, y){
-  gibss <- reticulate::import('gibss')
-  np <- reticulate::import('numpy')
-  fit = gibss$logistic$fit_logistic_susie2(X, np$array(y), L=10L, maxiter=20L)
-  ser = gibss$logistic$fit_logistic_susie2(X, np$array(y), L=1L, maxiter=1L)
-  return(list(fit=fit, ser=ser))
-}
-tictoc::tic()
-fit <- fit_logistic_susie(X, y)
-tictoc::toc()
-
-import pickle
-fit = r.fit
-pickle.dump(fit, open('cd19b_gobp.pkl', 'wb'))
-fit2 = pickle.load(open('cd19b_gobp.pkl', 'rb'))
-```
-
-```{r}
-#| eval: False
-cd19_gobp_fit <- py$fit2
-fit <- cd19_gobp_fit$fit
-ser <- cd19_gobp_fit$ser
-
-cs_tbl <- purrr::map_dfr(1:10, ~list(
-  cs=list(fit$credible_sets[[.x]]$cs + 1), 
-  alpha = list(fit$credible_sets[[.x]]$alpha),
-  lbf_ser = fit$lbf_ser[.x],
-  size = fit$credible_sets[[.x]]$size)) %>%
-  mutate(component = purrr::map_chr(1:n(), ~glue::glue('L{.x}'))) %>%
-  filter(lbf_ser > 1, size < 100) %>%
-  tidyr::unnest_longer(c(cs, alpha)) %>%
-  mutate(geneSet = rownames(X)[cs]) %>%
-  left_join(gobp$geneSetDes) %>%
-  arrange(component)
-
-cs_tbl
-```
-
-
-```{r}
-#| eval: False
-
-
-# write list to file, one line per gene
-tibble(gene = list) %>%
-  write_csv('cd19b_de_genes.txt', col_names=F)
-
-tibble(gene=background) %>%
-  write_csv('cd19_background.txt', col_names=F)
-```
-
-#### WeGestaltR
-
-WebGestaltR has a really robust geneID mapping, or at least more 
-
-```{r}
-#| eval: False
-# install.packages('WebGestaltR')
-idmap <- WebGestaltR::idMapping(inputGene=background, sourceIdType="entrezgene", targetIdType = "genesymbol")
-idmap
-```
-
-
-```{r}
-#| eval: False
-library(enrichR)
-setEnrichrSite("EnrichR")
-dbs <- listEnrichrDbs()
-```
-
-
-
-```{r}
-import_gsea_fun <- function() {
-  reticulate::py_run_string("
-import numpy as np
-from scipy import sparse
-from gibss.logistic_sparse import fit_logistic_susie2
-def logistic_susie_gsea(X, y):
-    X_sp = sparse.csr_matrix(X)
-    y = np.array(y)
-    fit = fit_logistic_susie2(X_sp, y, L=10, maxiter=50, tol=1e-6)
-    fit2 = fit._asdict()
-    return fit2
-logistic_susie_gsea")$logistic_susie_gsea
+load_model2 <- function(path){
+  # load fit model
+  message(glue::glue('loading fit from: {path}'))
+  fit <- readRDS(path)
+  return(fit)
 }
 
+make_cs_tbl_nested <- function(fit){
+  more_go_info <- AnnotationDbi::select(GO.db::GO.db,
+         keys = unique(fit$data$geneSets$geneSet),
+         columns = c('TERM', 'DEFINITION'),
+         keytype = 'GOID') %>% 
+    as_tibble() %>%
+    dplyr::mutate(geneSet=GOID)
+  
+  more_gene_info <- AnnotationDbi::select(org.Hs.eg.db::org.Hs.eg.db,
+        keys = unique(fit$data$geneMapping$gene),
+        columns = c('SYMBOL', 'GENETYPE', 'GENENAME'),
+        keytype = 'ENTREZID') %>%
+    as_tibble() %>%
+    dplyr::mutate(gene = ENTREZID)
+  
+  gene_columns <- c('ENTREZID', 'SYMBOL', 'GENENAME', 'geneInList')
+  gene_set_columns <- c('geneSet', 'TERM', 'DEFINITION', 'alpha', 'beta', 'lbf', 'geneSetSize', 'propInList')
+  component_columns <- c('component', 'size', 'coverage', 'target_coverage', 'lbf_ser', 'prior_variance')
+  
+  all_columns <- c(component_columns, gene_set_columns, gene_columns)
+  
+  message('building nested credible set table')
+  fit %>%
+    make_cs_tbl() %>%
+    left_join(make_component_tbl(fit)) %>% # add effect estimates, etc.
+    left_join(more_go_info) %>%
+    left_join(more_gene_info) %>%
+    dplyr::select(all_columns) %>%
+    # nest gene level data
+    nest(.by= c(component_columns, gene_set_columns), .key='details') %>%
+    # nest gene set level data
+    nest(.by= component_columns, .key='details')
+}
+
+cs_tbl_nested <- load_model(celltype, q, db) %>% 
+  make_cs_tbl_nested()
 ```
 
+```{r}
+nested_summary <- config %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(path = make_path(celltype_sanitized, db, q)) %>%
+  ungroup() %>%
+  dplyr::mutate(nested_table = purrr::map(path, ~make_cs_tbl_nested(readRDS(.x))))
+```
 
+```{r}
+nested_summary %>%
+  saveRDS('notebooks/pbmcs/results/nested_table.rds')
+```
 

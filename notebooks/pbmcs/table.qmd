@@ -1,0 +1,26 @@
+---
+title: "PBMC GSEA Table"
+format: html
+---
+
+## A table of PBMC results on GO
+
+In order to present the GSEA results in a more digestable format we take the SuSiE output and put it into a nested table that can be viewed conveniently in the browser.
+For each experiment (gene list + gene set database) the table has three levels.
+
+1. The top level has information about each component of the model.
+2. The second level reports information on the top gene sets in the the components (the 95% credible set)
+3. The third level reports information on the genes in each gene set.
+
+```{r}
+#| eval: true
+source('notebooks/pbmcs/functions.R')
+data <- readRDS('notebooks/pbmcs/results/nested_table.rds') %>%
+  dplyr::select(-path) %>%
+  dplyr::rename(details = nested_table)
+
+
+reactable(
+  dplyr::select(data, -c(celltype_sanitized, details)),
+  details = make_get_details(data))
+```
