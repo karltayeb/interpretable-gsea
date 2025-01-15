@@ -1,6 +1,8 @@
 ---
 title: "PBMC GSEA Table"
 format: html
+execute:
+  eval: true
 ---
 
 ## A table of PBMC results on GO
@@ -18,9 +20,40 @@ source('notebooks/pbmcs/functions.R')
 data <- readRDS('notebooks/pbmcs/results/nested_table.rds') %>%
   dplyr::select(-path) %>%
   dplyr::rename(details = nested_table)
+```
 
+### CD19+ B Cells
 
-reactable(
-  dplyr::select(data, -c(celltype_sanitized, details)),
-  details = make_get_details(data))
+```{r}
+data %>%
+  dplyr::select(-c(celltype_sanitized, details)) %>%
+  filter(celltype == 'CD19+ B') %>%
+  reactable(details = make_get_details(data))
+```
+
+### CD14+ Monocyte
+
+```{r}
+data %>%
+  dplyr::select(-c(celltype_sanitized, details)) %>%
+  filter(celltype == 'CD14+ Monocyte') %>%
+  reactable(details = make_get_details(data))
+```
+
+### CD34+ 
+
+```{r}
+data %>%
+  dplyr::select(-c(celltype_sanitized, details)) %>%
+  filter(celltype == 'CD34+') %>%
+  reactable(details = make_get_details(data))
+```
+
+### CD56+ NK
+
+```{r}
+data %>%
+  dplyr::select(-c(celltype_sanitized, details)) %>%
+  filter(celltype == 'CD56+ NK') %>%
+  reactable(details = make_get_details(data))
 ```
