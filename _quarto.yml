@@ -1,6 +1,7 @@
 project:
   type: book
   output-dir: docs
+  execute-dir: project
 
 book:
   title: "Interpretable Gene Set Enrichment Analysis"
@@ -9,7 +10,10 @@ book:
   chapters:
     - index.qmd
     - notebooks/gsea_simulated_example/index.qmd
-    - notebooks/pbmcs/index.qmd
+    - part: "PBMC example"
+      chapters:
+        - notebooks/pbmcs/index.qmd
+        - notebooks/pbmcs/table.qmd
     - notebooks/summary.qmd
     - notebooks/references.qmd
 
