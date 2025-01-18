@@ -14,6 +14,9 @@ book:
       chapters:
         - notebooks/pbmcs/index.qmd
         - notebooks/pbmcs/table.qmd
+    - part: "Plague analysis"
+      chapters:
+        - notebooks/plague_example/plague.qmd
     - notebooks/summary.qmd
     - notebooks/references.qmd
 

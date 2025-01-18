@@ -1,0 +1,317 @@
+---
+title: "Plague"
+format: html
+description: test description
+execute:
+  eval: true
+---
+
+Single cell RNA-seq of PBMCs were collected at baseline and stimulated with plaugue. 
+The effect of stimulation was estimated in each celltype using pseudobulk expression. 
+The resutling effect sizes across cell types were restimated using MASH. Differentially expressed genes in a given cell type are identified as those with $\text{lfsr} < 0.01$.
+
+```{r load-data}
+library(dplyr)
+
+data <- new.env()
+load('data/plague.RData', env=data)
+
+make_list_and_background <- function(gene, lfsr){
+  gene_list <- gene[which(lfsr < 0.01)]
+  return(list(gene_list=gene_list, gene_background=gene))
+}
+
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+
+symbol2entrez <- AnnotationDbi::select(
+  org.Hs.eg.db, 
+  keys = unique(data$gene_results$gene), 
+  columns = 'ENTREZID', 
+  keytype = 'SYMBOL') %>%
+  dplyr::rename(gene = SYMBOL)
+
+gene_lists <- data$long_results %>%
+  dplyr::left_join(symbol2entrez) %>%
+  dplyr::filter(!is.na(ENTREZID)) %>%
+  dplyr::group_by(celltype) %>%
+  dplyr::summarise(gene_list = list(make_list_and_background(ENTREZID, lfsr)))
+```
+
+
+One thing to note is that the gene lists are quite large when using an lfsr threshold of 0.01, and the DE genes in each cell type have substantial overlap.
+
+```{r fit1}
+#| cache: true
+
+reticulate::use_virtualenv('gibss')
+susie_fits <- gene_lists %>%
+  dplyr::rowwise() %>%
+  mutate(fit = list(gseasusie::fit_gsea_susie_webgestalt(
+    gene_list$gene_list, gene_list$gene_background,
+    'geneontology_Biological_Process'
+  )))
+```
+
+
+```{r heatmap-intersection}
+# Sample list of lists
+list_of_lists <- purrr::map(gene_lists$gene_list, ~.$gene_list)
+names(list_of_lists) <- gene_lists$celltype
+
+# Function to calculate the size of the intersection of two lists
+intersection_size <- function(a, b) {
+  length(intersect(a, b))
+}
+
+# Determine the number of lists
+n <- length(list_of_lists)
+
+# Create an empty matrix to store the intersection sizes
+intersection_matrix <- matrix(0, n, n, dimnames = list(names(list_of_lists), names(list_of_lists)))
+
+# Calculate the size of the intersection for each pair
+for (i in seq_along(list_of_lists)) {
+  for (j in seq_along(list_of_lists)) {
+    # Fill in the matrix with intersection sizes, ensuring i <= j to avoid redundant calculations
+    if (i <= j) {
+      intersection_matrix[i, j] <- intersection_size(list_of_lists[[i]], list_of_lists[[j]])
+    }
+  }
+}
+
+# Since the intersection operation is symmetric, mirror the upper triangle to the lower triangle
+intersection_matrix[lower.tri(intersection_matrix)] <- t(intersection_matrix)[lower.tri(intersection_matrix)]
+
+# Display the matrix
+pheatmap::pheatmap(intersection_matrix, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE)
+```
+
+```{r fit2}
+# Function to find unique elements in a list compared to others
+find_unique_elements <- function(target_list, other_lists) {
+  # Combine all other lists into a single vector
+  combined_others <- unlist(other_lists)
+  # Find elements in the target list that are not in the combined vector of other lists
+  setdiff(target_list, combined_others)
+}
+
+# Create a new list to store lists of unique elements
+unique_elements_list <- lapply(seq_along(gene_lists$gene_list), function(i) {
+  # Current target list
+  target_list <- list_of_lists[[i]]
+  # All other lists except the current one
+  other_lists <- list_of_lists[-i]
+  # Find unique elements for the current list
+  find_unique_elements(target_list, other_lists)
+})
+
+# Assign names to the resulting list of lists
+names(unique_elements_list) <- names(list_of_lists)
+```
+
+
+```{r cs-tbl-funs}
+make_cs_tbl <- gseasusie:::make_cs_tbl
+make_component_tbl <- gseasusie:::make_component_tbl
+
+make_cs_tbl_nested <- function(fit) {
+  more_go_info <- AnnotationDbi::select(GO.db::GO.db,
+    keys = unique(fit$data$geneSets$geneSet),
+    columns = c("TERM", "DEFINITION"),
+    keytype = "GOID"
+  ) %>%
+    as_tibble() %>%
+    dplyr::mutate(geneSet = GOID)
+
+  more_gene_info <- AnnotationDbi::select(org.Hs.eg.db::org.Hs.eg.db,
+    keys = unique(fit$data$geneMapping$gene),
+    columns = c("SYMBOL", "GENETYPE", "GENENAME"),
+    keytype = "ENTREZID"
+  ) %>%
+    as_tibble() %>%
+    dplyr::mutate(gene = ENTREZID)
+
+  gene_columns <- c("ENTREZID", "SYMBOL", "GENENAME", "geneInList")
+  gene_set_columns <- c("geneSet", "TERM", "DEFINITION", "alpha", "beta", "lbf", "geneSetSize", "propInList")
+  component_columns <- c("component", "size", "top_term", "top_effect", "lbf_ser")
+
+  all_columns <- c(component_columns, gene_set_columns, gene_columns)
+
+  message("building nested credible set table")
+  fit %>%
+    make_cs_tbl() %>%
+    left_join(make_component_tbl(fit)) %>% # add effect estimates, etc.
+    left_join(more_go_info) %>%
+    left_join(more_gene_info) %>%
+    dplyr::select(tidyselect::any_of(all_columns)) %>%
+    # get representative gene set info
+    dplyr::group_by(component) %>%
+    mutate(
+      top_term = TERM[which.max(lbf)],
+      top_effect = beta[which.max(lbf)]
+    ) %>%
+    ungroup() %>%
+    # nest gene level data
+    tidyr::nest(.by = c(component_columns, gene_set_columns), .key = "details") %>%
+    # nest gene set level data
+    tidyr::nest(.by = component_columns, .key = "details")
+}
+```
+
+
+```{r reactiable-funs}
+library(reactable)
+
+make_sensible_colDef <- function(data) {
+  # Initialize an empty list to store colDef objects
+  col_defs <- list()
+
+  # Iterate over each column in the data
+  for (col_name in names(data)) {
+    # Get the column data
+    col_data <- data[[col_name]]
+    
+    # Determine the type of the column
+    col_type <- class(col_data)
+    
+    # Set default colDef based on the column type
+    if ("numeric" %in% col_type) {
+      # Numeric columns: Format to 2 decimal places
+      col_defs[[col_name]] <- colDef(format = colFormat(digits = 2))
+    } else if ("integer" %in% col_type) {
+      # Integer columns: No decimal places
+      col_defs[[col_name]] <- colDef(format = colFormat(digits = 0))
+    } else if ("character" %in% col_type || "factor" %in% col_type) {
+      # Character or factor columns: Truncate long strings
+      # col_defs[[col_name]] <- colDef(truncate = TRUE, minWidth = 150)
+    } else if ("Date" %in% col_type) {
+      # Date columns: Format as a readable date
+      col_defs[[col_name]] <- colDef(format = colFormat(date = TRUE))
+    } else if ("logical" %in% col_type) {
+      # Logical columns: Display as checkboxes
+      col_defs[[col_name]] <- colDef(cell = function(value) {
+        if (isTRUE(value)) "✔" else "✗"
+      })
+    } else {
+      # Default colDef for other types
+      col_defs[[col_name]] <- colDef()
+    }
+  }
+  return(col_defs)
+}
+
+make_rwg_column_style <- function(max=2){
+  function(values){
+        pal <- function(x) rgb(colorRamp(c('red', 'white', 'green'))(x), maxColorValue=255)
+        clipped <- (pmax(-max, pmin(values, max)) + max) / (2*max)
+        color <- pal(clipped)
+        list(background = color)
+  }
+}
+
+make_column_format_list <- function(data){
+  columns <- make_sensible_colDef(data)
+  if ('top_effect' %in% colnames(data)){
+    columns$top_effect <- reactable::colDef(
+      style= make_rwg_column_style(2),
+      format = reactable::colFormat(
+        digits=2
+      )
+    )
+  }
+  if ('beta' %in% colnames(data)){
+    columns$beta <- reactable::colDef(
+      style= make_rwg_column_style(2),
+      format = reactable::colFormat(
+        digits=2
+      )
+    )
+  }
+  if ('alpha' %in% colnames(data)){
+    columns$alpha <- reactable::colDef(
+      format = reactable::colFormat(digits=2)
+    )
+  }
+  return(columns)
+}
+
+make_get_details <- function (nested_tbls) 
+{
+    if (!is.null(nested_tbls)) {
+        get_details <- function(index) {
+          nested_tbl <- nested_tbls[[index]]
+          data <- dplyr::select(nested_tbl, -tidyselect::any_of("details"))
+          details <- nested_tbl$details
+          htmltools::div(style = "padding: 1rem", reactable::reactable(
+            data,
+            details = make_get_details(details), 
+            outlined = TRUE, 
+            columns = make_column_format_list(data)
+          ))
+        }
+    }
+    else {
+        get_details <- NULL
+    }
+    return(get_details)
+}
+
+nested_reactable <- function (nested_tbl) 
+{
+    data <- dplyr::select(nested_tbl, -tidyselect::any_of("details"))
+    details <- nested_tbl$details
+    reactable::reactable(
+      data, 
+      details = make_get_details(details),
+      columns = make_column_format_list(data)
+    )
+}
+```
+
+
+## B Cell
+
+```{r b}
+susie_fits$fit[[1]] %>%
+  make_cs_tbl_nested() %>%
+  nested_reactable()
+```
+
+## CD4T Cell
+
+```{r cd4t}
+susie_fits$fit[[2]] %>%
+  make_cs_tbl_nested() %>%
+  nested_reactable()
+```
+
+## CD8T Cell
+
+```{r cd8t}
+susie_fits$fit[[3]] %>%
+  make_cs_tbl_nested() %>%
+  nested_reactable()
+```
+
+## Mono
+
+```{r mono}
+susie_fits$fit[[4]] %>%
+  make_cs_tbl_nested() %>%
+  nested_reactable()
+```
+
+## NK
+
+```{r nk}
+#| eval: True 
+susie_fits$fit[[5]] %>%
+  make_cs_tbl_nested() %>%
+  nested_reactable()
+```
+
+
+
+
+
