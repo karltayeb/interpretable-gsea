@@ -313,7 +313,7 @@ susie_fits$fit[[5]] %>%
 ```
 
 
-## DE genes (`lfsr < 0.01`, `log2FC > 0.4`)
+## DE genes (`lfsr < 0.01`, `beta > 0.5`)
 
 ### Overview
 

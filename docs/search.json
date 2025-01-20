@@ -116,5 +116,26 @@
       "Plague analysis",
       "<span class='chapter-number'>4</span>  <span class='chapter-title'>Plague</span>"
     ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Interpretable Gene Set Enrichment Analysis",
+    "section": "",
+    "text": "Preface\nGene set enrichment analysis is ubiquituous in genetics and genomics research, providing a powerful tool for interpreting the genes that come out of e.g. differential expression analysis. However, the challenge of interpreting a long list of genes is often replaced with the challenge of interpreting a long list of gene sets.\nIn this work we perform gene set enrichment analysis via sparse multiple regression.",
+    "crumbs": [
+      "Preface"
+    ]
+  },
+  {
+    "objectID": "notebooks/plague_example/plague.html#de-genes-lfsr-0.01-beta-0.5",
+    "href": "notebooks/plague_example/plague.html#de-genes-lfsr-0.01-beta-0.5",
+    "title": "4  Plague",
+    "section": "4.2 DE genes (lfsr < 0.01, beta > 0.5)",
+    "text": "4.2 DE genes (lfsr &lt; 0.01, beta &gt; 0.5)\n\n4.2.1 Overview\n\nmake_list_and_background &lt;- function(gene, lfsr, beta){\n  gene_list &lt;- gene[intersect(which(lfsr &lt; 0.01), which(beta &gt; 0.5))]\n  return(list(gene_list=gene_list, gene_background=gene))\n}\n\nsymbol2entrez &lt;- AnnotationDbi::select(\n  org.Hs.eg.db, \n  keys = unique(data$gene_results$gene), \n  columns = 'ENTREZID', \n  keytype = 'SYMBOL') %&gt;%\n  dplyr::rename(gene = SYMBOL)\n\ngene_lists &lt;- data$long_results %&gt;%\n  dplyr::left_join(symbol2entrez) %&gt;%\n  dplyr::filter(!is.na(ENTREZID)) %&gt;%\n  dplyr::group_by(celltype) %&gt;%\n  dplyr::summarise(gene_list = list(make_list_and_background(ENTREZID, lfsr, beta)))\n\n\n# Display the matrix\nlist_of_lists &lt;- purrr::map(gene_lists$gene_list, ~.$gene_list)\nnames(list_of_lists) &lt;- gene_lists$celltype\nintersection_matrix &lt;- make_intersection_matrix(list_of_lists)\npheatmap::pheatmap(intersection_matrix, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE)\n\n\n\n\n\n\n\n\n\n\n4.2.2 Fitting\n\nsusie_fits &lt;- gene_lists %&gt;%\n  dplyr::rowwise() %&gt;%\n  mutate(fit = list(gseasusie::fit_gsea_susie_webgestalt(\n    gene_list$gene_list, gene_list$gene_background,\n    'geneontology_Biological_Process'\n  )))\n\n18.015 sec elapsed\n11.357 sec elapsed\n14.121 sec elapsed\n8.752 sec elapsed\n10.563 sec elapsed\n\n\n\n\n4.2.3 B Cell\n\nsusie_fits$fit[[1]] %&gt;%\n  make_cs_tbl_nested() %&gt;%\n  nested_reactable()\n\n\n\n\n\n\n\n4.2.4 CD4T Cell\n\nsusie_fits$fit[[2]] %&gt;%\n  make_cs_tbl_nested() %&gt;%\n  nested_reactable()\n\n\n\n\n\n\n\n4.2.5 CD8T Cell\n\nsusie_fits$fit[[3]] %&gt;%\n  make_cs_tbl_nested() %&gt;%\n  nested_reactable()\n\n\n\n\n\n\n\n4.2.6 Mono\n\nsusie_fits$fit[[4]] %&gt;%\n  make_cs_tbl_nested() %&gt;%\n  nested_reactable()\n\n\n\n\n\n\n\n4.2.7 NK\n\nsusie_fits$fit[[5]] %&gt;%\n  make_cs_tbl_nested() %&gt;%\n  nested_reactable()",
+    "crumbs": [
+      "Plague analysis",
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Plague</span>"
+    ]
   }
 ]
