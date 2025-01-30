@@ -16,6 +16,10 @@ library(dplyr)
 library(AnnotationDbi)
 library(org.Hs.eg.db)
 
+library(htmltools)
+library(tippy)
+library(reactable)
+
 reticulate::use_virtualenv('gibss')
 
 data <- new.env()
@@ -54,31 +58,38 @@ make_intersection_matrix <- function(list_of_lists){
 }
 ```
 
+### Functions
 
 ```{r cs-tbl-funs}
+#| eval: false
+
 make_cs_tbl <- gseasusie:::make_cs_tbl
 make_component_tbl <- gseasusie:::make_component_tbl
 
-make_cs_tbl_nested <- function(fit, logbf_threshold=log(10.)) {
-  more_go_info <- AnnotationDbi::select(GO.db::GO.db,
-    keys = unique(fit$data$geneSets$geneSet),
-    columns = c("TERM", "DEFINITION"),
-    keytype = "GOID"
-  ) %>%
+get_go_info <- function(fit){
+  AnnotationDbi::select(GO.db::GO.db,
+      keys = unique(fit$data$geneSets$geneSet),
+      columns = c("TERM", "DEFINITION"),
+      keytype = "GOID") %>%
     as_tibble() %>%
     dplyr::mutate(geneSet = GOID)
+}
 
-  more_gene_info <- AnnotationDbi::select(org.Hs.eg.db::org.Hs.eg.db,
+get_gene_info <-function(fit){
+  AnnotationDbi::select(org.Hs.eg.db::org.Hs.eg.db,
     keys = unique(fit$data$geneMapping$gene),
     columns = c("SYMBOL", "GENETYPE", "GENENAME"),
-    keytype = "ENTREZID"
-  ) %>%
+    keytype = "ENTREZID") %>%
     as_tibble() %>%
     dplyr::mutate(gene = ENTREZID)
+}
 
+make_cs_tbl_nested <- function(fit, logbf_threshold=log(10.)) {
+  more_go_info <- get_go_info(fit)
+  more_gene_info <- get_gene_info(fit)
   gene_columns <- c("ENTREZID", "SYMBOL", "GENENAME", "geneInList")
   gene_set_columns <- c("geneSet", "TERM", "DEFINITION", "alpha", "beta", "lbf", "geneSetSize", "propInList")
-  component_columns <- c("component", "size", "top_term", "top_effect", "lbf_ser")
+  component_columns <- c("component", "size", "top_geneSet", "top_term", "top_effect", "lbf_ser")
 
   all_columns <- c(component_columns, gene_set_columns, gene_columns)
 
@@ -95,6 +106,7 @@ make_cs_tbl_nested <- function(fit, logbf_threshold=log(10.)) {
       # get representative gene set info
       dplyr::group_by(component) %>%
       mutate(
+        top_geneSet = geneSet[which.max(lbf)],
         top_term = TERM[which.max(lbf)],
         top_effect = beta[which.max(lbf)]
       ) %>%
@@ -112,10 +124,15 @@ make_cs_tbl_nested <- function(fit, logbf_threshold=log(10.)) {
 ```{r reactable-funs}
 library(reactable)
 
+# See the ?tippy documentation to learn how to customize tooltips
+with_tooltip <- function(value, tooltip, ...) {
+  div(style = "text-decoration: underline; text-decoration-style: dotted; cursor: help",
+      tippy(value, tooltip, ...))
+}
+
 make_sensible_colDef <- function(data) {
   # Initialize an empty list to store colDef objects
   col_defs <- list()
-
   # Iterate over each column in the data
   for (col_name in names(data)) {
     # Get the column data
@@ -182,6 +199,17 @@ make_column_format_list <- function(data){
       format = reactable::colFormat(digits=2)
     )
   }
+  
+  if ('geneSet' %in% colnames(data)){
+    term2def <- purrr::map(data$DEFINITION, ~if_else(is.na(.x), "No definition found", .x))
+    names(term2def) <- data$geneSet
+    columns$geneSet <- colDef(cell = function(value) with_tooltip(value, term2def[[value]]))
+  }
+  if ('top_geneSet' %in% colnames(data)){
+    term2def <- purrr::map(data$DEFINITION, ~if_else(is.na(.x), "No definition found", .x))
+    names(term2def) <- data$GOID
+    columns$top_geneSet <- colDef(cell = function(value) with_tooltip(value, term2def[[value]]))
+  }
   return(columns)
 }
 
@@ -225,12 +253,12 @@ nested_reactable <- function (nested_tbl)
 }
 ```
 
+
 ## DE genes (`lfsr < 0.01`)
 
 ### Overview
 
 ```{r}
-
 make_list_and_background <- function(gene, lfsr){
   gene_list <- gene[which(lfsr < 0.01)]
   return(list(gene_list=gene_list, gene_background=gene))
@@ -262,7 +290,6 @@ pheatmap::pheatmap(intersection_matrix, cluster_rows = FALSE, cluster_cols = FAL
 
 ```{r fit1}
 #| cache: true
-
 susie_fits <- gene_lists %>%
   dplyr::rowwise() %>%
   mutate(fit = list(gseasusie::fit_gsea_susie_webgestalt(
@@ -273,45 +300,70 @@ susie_fits <- gene_lists %>%
 
 ### B Cell
 
-```{r b}
+```{r}
 susie_fits$fit[[1]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
+
+```{r}
+cs_tbl <- susie_fits$fit[[1]] %>%
+  gseasusie::make_cs_tbl(coverage = 0.99)
+
+cs_tbl %>%
+  dplyr::group_by(component) %>%
+  dplyr::select(-c(log2BF_SER, DEFINITION)) %>%
+  gt::gt() %>%
+  gt::fmt_number(columns = c(propInList, log2OR, PIP, log2BF), decimals=2)
+```
+
 
 ### CD4T Cell
 
-```{r cd4t}
+```{r}
 susie_fits$fit[[2]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### CD8T Cell
 
-```{r cd8t}
+```{r}
 susie_fits$fit[[3]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### Mono
 
-```{r mono}
+```{r}
 susie_fits$fit[[4]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### NK
 
-```{r nk}
-#| eval: True 
+```{r}
 susie_fits$fit[[5]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
+### Residual enrichments
+
+While logistic SuSiE may not confidently include a gene set in a CS, there may be evidence for residual enrichment signal after controlling for the effects estimated by SuSiE. That is, we may find examples where there is evidence for a *an* enrichment (the residual SER has a moderately large BF) but it is difficult to localize to a particular gene set (the CS is very large). 
+
+One idea is to perform a marginal analysis of the residual enrichment signal. For each gene set, test for an effect controlling for those discovered in logistic SuSiE. We can apply BH to $p_i = 1/\text{BF}_i$ where $\text{BF}_i$ is the Bayes factor for the enrichment of gene set $i$ controlling for the gene sets discovered in logistic SuSiE. Notice that
+
+$$
+\text{BF}_{SER} = \frac{1}{p} \sum_{i=1}^p BF_i \leq \frac{\text{BF}_{(1)}}{p}
+$$
+Then, if $\text{BF}_{SER} > \frac{1}{\alpha}$, applying BH procedure to $p_i = 1/\text{BH_i}$ would give at least one gene set at FDR level $\alpha$. For $\alpha = 0.1$ this corresponds to seeing a $\log BF \approx 2.3$. Here, we present all CSs for components with $\text{BF}_{SER} \geq 10$. All the CSs are small, so in this example there isn't evidence for strong marginal enrichment.
+
+```{r}
+purrr::map_dbl(1:5, ~sum(p.adjust(1/exp(susie_fits$fit[[.x]]$fit$lbf[10,]), method='BH')< 0.05))
+```
 
 ## DE genes (`lfsr < 0.01`, `log2FC > 0.5`)
 
@@ -319,7 +371,7 @@ susie_fits$fit[[5]] %>%
 
 ```{r prepare-lists-large-effect}
 make_list_and_background <- function(gene, lfsr, beta){
-  gene_list <- gene[intersect(which(lfsr < 0.01), which(abs(beta *log2(exp(1))) > 0.5))]
+  gene_list <- gene[intersect(which(lfsr < 0.01), which(abs(beta) > 0.5))]
   return(list(gene_list=gene_list, gene_background=gene))
 }
 
@@ -361,54 +413,58 @@ susie_fits <- gene_lists %>%
 
 ### B Cell
 
-```{r b-large-effect}
+```{r}
 susie_fits$fit[[1]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
+
 
 ### CD4T Cell
 
-```{r cd4t-large-effect}
+```{r}
 susie_fits$fit[[2]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### CD8T Cell
 
-```{r cd8t-large-effect}
+```{r}
 susie_fits$fit[[3]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### Mono
 
-```{r mono-large-effect}
+```{r}
 susie_fits$fit[[4]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### NK
 
-```{r nk-large-effect}
-#| eval: True 
+```{r}
 susie_fits$fit[[5]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
+### Residual Enrichment
 
+```{r}
+purrr::map_dbl(1:5, ~sum(p.adjust(1/exp(susie_fits$fit[[.x]]$fit$lbf[10,]), method='BH')< 0.05))
+```
 
-## DE genes (`lfsr < 0.01`, `log2FC > 0.2`, upregulated)
+## DE genes (`lfsr < 0.01`, `log2FC > 0.5`, upregulated)
 
 ### Overview
 
 ```{r prepare-lists-large-effect-up}
 make_list_and_background <- function(gene, lfsr, beta){
-  gene_list <- gene[intersect(which(lfsr < 0.01), which(beta *log2(exp(1)) > 0.5))]
+  gene_list <- gene[intersect(which(lfsr < 0.01), which(beta > 0.5))]
   return(list(gene_list=gene_list, gene_background=gene))
 }
 
@@ -450,52 +506,59 @@ susie_fits <- gene_lists %>%
 
 ### B Cell
 
-```{r b-large-effect-up}
+```{r}
 susie_fits$fit[[1]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
+
 
 ### CD4T Cell
 
-```{r cd4t-large-effect-up}
+```{r}
 susie_fits$fit[[2]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### CD8T Cell
 
-```{r cd8t-large-effect-up}
+```{r}
 susie_fits$fit[[3]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### Mono
 
-```{r mono-large-effect-up}
+```{r}
 susie_fits$fit[[4]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### NK
 
-```{r nk-large-effect-up}
-#| eval: True 
+```{r}
 susie_fits$fit[[5]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
-## DE genes (`lfsr < 0.01`, `log2FC > 0.2`, down regulated)
+
+### Residual Enrichment
+
+```{r}
+purrr::map_dbl(1:5, ~sum(p.adjust(1/exp(susie_fits$fit[[.x]]$fit$lbf[10,]), method='BH')< 0.05))
+```
+
+## DE genes (`lfsr < 0.01`, `log2FC < -0.5`, down regulated)
 
 ### Overview
 
 ```{r prepare-lists-large-effect-down}
 make_list_and_background <- function(gene, lfsr, beta){
-  gene_list <- gene[intersect(which(lfsr < 0.01), which(beta *log2(exp(1)) < -0.5))]
+  gene_list <- gene[intersect(which(lfsr < 0.01), which(beta < -0.5))]
   return(list(gene_list=gene_list, gene_background=gene))
 }
 
@@ -537,43 +600,50 @@ susie_fits <- gene_lists %>%
 
 ### B Cell
 
-```{r b-large-effect-down}
+```{r}
 susie_fits$fit[[1]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
+
 
 ### CD4T Cell
 
-```{r cd4t-large-effect-down}
+```{r}
 susie_fits$fit[[2]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### CD8T Cell
 
-```{r cd8t-large-effect-down}
+```{r}
 susie_fits$fit[[3]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### Mono
 
-```{r mono-large-effect-down}
+```{r}
 susie_fits$fit[[4]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### NK
 
-```{r nk-large-effect-down}
-#| eval: True 
+```{r}
 susie_fits$fit[[5]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
+```
+
+
+### Residual Enrichment
+
+```{r}
+purrr::map_dbl(1:5, ~sum(p.adjust(1/exp(susie_fits$fit[[.x]]$fit$lbf[10,]), method='BH')< 0.05))
 ```
 
 
@@ -630,45 +700,50 @@ unique_susie_fits <- gene_lists %>%
 
 ### B Cell
 
-```{r b-unique}
-unique_susie_fits$fit[[1]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+```{r}
+susie_fits$fit[[1]] %>%
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
+
 
 ### CD4T Cell
 
-```{r cd4t-unique}
-unique_susie_fits$fit[[2]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+```{r}
+susie_fits$fit[[2]] %>%
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### CD8T Cell
 
-```{r cd8t-unique}
-unique_susie_fits$fit[[3]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+```{r}
+susie_fits$fit[[3]] %>%
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### Mono
 
-```{r mono-unique}
-unique_susie_fits$fit[[4]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+```{r}
+susie_fits$fit[[4]] %>%
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
 ### NK
 
-```{r nk-unique}
-#| eval: True 
-unique_susie_fits$fit[[5]] %>%
-  make_cs_tbl_nested() %>%
-  nested_reactable()
+```{r}
+susie_fits$fit[[5]] %>%
+  gseasusie::make_cs_tbl() %>%
+  gseasusie::make_reactable()
 ```
 
+### Residual Enrichment
+
+```{r}
+purrr::map_dbl(1:5, ~sum(p.adjust(1/exp(susie_fits$fit[[.x]]$fit$lbf[10,]), method='BH')< 0.05))
+```
 
 
 
