@@ -1,0 +1,71 @@
+---
+title: "gseasusie"
+format: html
+execute:
+  eval: true
+---
+
+The `gseasusie` package contains functions to help make running and interpretting SuSiE 
+
+
+## Installation
+
+`gseasusie` depends on the `gibss` python package. 
+Before running `gseausie` for the first time you will have to set up a vitual environment with `gibss` and required dependencies installed in it. We provide a function that will create a conda environment called `r-gibss`. When you load the `gseasusie` package it will automatically configure `reticulate` to use this environment.
+
+```{r demo-install}
+#| eval: false
+devtools::install_github('karltayeb/gseasusie')
+gseasusie::install_gibss()
+```
+
+## Using `gseausie`
+
+### Available gene sets
+To run gene set enrichment analysis you will need to provide a list of genes, a list of background genes, and a collection of gene sets. We borrow the gene sets available through the `WebGestaltR` package. The available gene sets can be viewed with
+
+```{r list-gene-sets}
+library(gseasusie)
+library(dplyr)
+
+WebGestaltR::listGeneSet() %>%
+  reactable::reactable(pagination = TRUE)
+```
+
+### Fitting from a gene list
+
+```{r demo-fit-from-list}
+list <- readRDS('example_list.rds')
+fit <- gseasusie::fit_gsea_susie_webgestalt(list$gene_list, list$gene_background, enrichDatabase = 'geneontology_Biological_Process')
+```
+
+A dynamic table of the resutls can be viewed with
+
+```{r demo-dynamic-table}
+fit %>% 
+  gseasusie::make_cs_tbl() %>% 
+  gseasusie::make_reactable()
+```
+
+A static version of this table can be produced by 
+
+```{r demo-static-table}
+fit %>% 
+  gseasusie::make_cs_tbl() %>% 
+  gseasusie::make_gt_table()
+```
+
+### Fitting with a gene set matrix
+
+Alternatively, you can provide a matrix sparse matrix `X_sp` and a binary vector `y`. `X_sp` should have dimension $p \times n$ where $p$ are the number of gene sets and $n$ the number of genes. $y$ is length $n$.
+This allows you to use your own custom gene sets.
+
+```{r demo-fit-from-Xy}
+data <- with(list, gseasusie::prepare_data_webgestalt(gene_list, gene_background, 'geneontology_Biological_Process'))
+Matrix::mean(data$X) # the matrix is sparse
+head(data$y) # response is binary
+fit <- gseasusie::logistic_susie_sparse(data$X, data$y, L=10L)
+```
+
+
+

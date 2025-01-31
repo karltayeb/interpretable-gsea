@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.6.39">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>2&nbsp; gseasusie – Interpretable Gene Set Enrichment Analysis</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../notebooks/pbmcs/index.html" rel="next">
+<link href="../notebooks/gsea_simulated_example/index.html" rel="prev">
+<script src="../site_libs/quarto-html/quarto.js"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-e26003cea8cd680ca0c55a263523d882.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-626149efe8f5d16e1d391ba177679bf0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="../site_libs/core-js-2.5.3/shim.min.js"></script>
+<script src="../site_libs/react-18.2.0/react.min.js"></script>
+<script src="../site_libs/react-18.2.0/react-dom.min.js"></script>
+<script src="../site_libs/reactwidget-2.0.0/react-tools.js"></script>
+<link href="../site_libs/htmltools-fill-0.5.8.1/fill.css" rel="stylesheet">
+<script src="../site_libs/htmlwidgets-1.6.4/htmlwidgets.js"></script>
+<link href="../site_libs/reactable-0.4.4/reactable.css" rel="stylesheet">
+<script src="../site_libs/reactable-binding-0.4.4/reactable.js"></script>
+<link href="../site_libs/tippyjs-3.2.0/themes/google.css" rel="stylesheet">
+<link href="../site_libs/tippyjs-3.2.0/themes/light-border.css" rel="stylesheet">
+<link href="../site_libs/tippyjs-3.2.0/themes/light.css" rel="stylesheet">
+<link href="../site_libs/tippyjs-3.2.0/themes/translucent.css" rel="stylesheet">
+<script src="../site_libs/tippyjs-3.2.0/tippy.all.min.js"></script>
+<script src="../site_libs/tippy-binding-0.1.0/tippy.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="nav-sidebar floating">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../notebooks/gseasusie.html"><span class="chapter-number">2</span>&nbsp; <span class="chapter-title">gseasusie</span></a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="../">Interpretable Gene Set Enrichment Analysis</a> 
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Preface</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../notebooks/gsea_simulated_example/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">1</span>&nbsp; <span class="chapter-title">GSEA with logistic SuSiE, simulated example</span></span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../notebooks/gseasusie.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text"><span class="chapter-number">2</span>&nbsp; <span class="chapter-title">gseasusie</span></span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">PBMC example</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../notebooks/pbmcs/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">3</span>&nbsp; <span class="chapter-title">PBMC GSEA Example</span></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../notebooks/pbmcs/table.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">4</span>&nbsp; <span class="chapter-title">PBMC GSEA Table</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Plague analysis</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../notebooks/plague_example/plague.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">5</span>&nbsp; <span class="chapter-title">Plague</span></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../notebooks/summary.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><span class="chapter-number">6</span>&nbsp; <span class="chapter-title">Summary</span></span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../notebooks/references.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">References</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#installation" id="toc-installation" class="nav-link active" data-scroll-target="#installation"><span class="header-section-number">2.1</span> Installation</a></li>
+  <li><a href="#using-gseausie" id="toc-using-gseausie" class="nav-link" data-scroll-target="#using-gseausie"><span class="header-section-number">2.2</span> Using <code>gseausie</code></a>
+  <ul class="collapse">
+  <li><a href="#available-gene-sets" id="toc-available-gene-sets" class="nav-link" data-scroll-target="#available-gene-sets"><span class="header-section-number">2.2.1</span> Available gene sets</a></li>
+  <li><a href="#fitting-from-a-gene-list" id="toc-fitting-from-a-gene-list" class="nav-link" data-scroll-target="#fitting-from-a-gene-list"><span class="header-section-number">2.2.2</span> Fitting from a gene list</a></li>
+  <li><a href="#fitting-with-a-gene-set-matrix" id="toc-fitting-with-a-gene-set-matrix" class="nav-link" data-scroll-target="#fitting-with-a-gene-set-matrix"><span class="header-section-number">2.2.3</span> Fitting with a gene set matrix</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title"><span class="chapter-number">2</span>&nbsp; <span class="chapter-title">gseasusie</span></h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>The <code>gseasusie</code> package contains functions to help make running and interpretting SuSiE</p>
+<section id="installation" class="level2" data-number="2.1">
+<h2 data-number="2.1" class="anchored" data-anchor-id="installation"><span class="header-section-number">2.1</span> Installation</h2>
+<p><code>gseasusie</code> depends on the <code>gibss</code> python package. Before running <code>gseausie</code> for the first time you will have to set up a vitual environment with <code>gibss</code> and required dependencies installed in it. We provide a function that will create a conda environment called <code>r-gibss</code>. When you load the <code>gseasusie</code> package it will automatically configure <code>reticulate</code> to use this environment.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">'karltayeb/gseasusie'</span>)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>gseasusie<span class="sc">::</span><span class="fu">install_gibss</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="using-gseausie" class="level2" data-number="2.2">
+<h2 data-number="2.2" class="anchored" data-anchor-id="using-gseausie"><span class="header-section-number">2.2</span> Using <code>gseausie</code></h2>
+<section id="available-gene-sets" class="level3" data-number="2.2.1">
+<h3 data-number="2.2.1" class="anchored" data-anchor-id="available-gene-sets"><span class="header-section-number">2.2.1</span> Available gene sets</h3>
+<p>To run gene set enrichment analysis you will need to provide a list of genes, a list of background genes, and a collection of gene sets. We borrow the gene sets available through the <code>WebGestaltR</code> package. The available gene sets can be viewed with</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gseasusie)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'dplyr'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from 'package:stats':
+
+    filter, lag</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>WebGestaltR<span class="sc">::</span><span class="fu">listGeneSet</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  reactable<span class="sc">::</span><span class="fu">reactable</span>(<span class="at">pagination =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div class="reactable html-widget html-fill-item" id="htmlwidget-6eb015f8ec2ccfa497e1" style="width:auto;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-6eb015f8ec2ccfa497e1">{"x":{"tag":{"name":"Reactable","attribs":{"data":{"name":["geneontology_Biological_Process","geneontology_Biological_Process_noRedundant","geneontology_Cellular_Component","geneontology_Cellular_Component_noRedundant","geneontology_Molecular_Function","geneontology_Molecular_Function_noRedundant","pathway_KEGG","pathway_Panther","pathway_Reactome","pathway_Wikipathway","pathway_Wikipathway_cancer","network_CORUM","network_CORUMA","network_CPTAC_Proteomics_BRCA","network_CPTAC_Proteomics_COADREAD","network_CPTAC_Proteomics_HNSCC","network_CPTAC_Proteomics_LUAD","network_CPTAC_Proteomics_OV","network_CPTAC_Proteomics_UCEC","network_FunMap_DenseModules","network_FunMap_HierarchalModules","network_Kinase_phosphosite","network_Kinase_target","network_PPI_BIOGRID","network_PTMsigDB","network_TCGA_RNASeq_ACC","network_TCGA_RNASeq_BLCA","network_TCGA_RNASeq_BRCA","network_TCGA_RNASeq_CESC","network_TCGA_RNASeq_CHOL","network_TCGA_RNASeq_COADREAD","network_TCGA_RNASeq_DLBC","network_TCGA_RNASeq_ESCA","network_TCGA_RNASeq_GBM","network_TCGA_RNASeq_GBMLGG","network_TCGA_RNASeq_HNSC","network_TCGA_RNASeq_KICH","network_TCGA_RNASeq_KIRP","network_TCGA_RNASeq_LAML","network_TCGA_RNASeq_LGG","network_TCGA_RNASeq_LIHC","network_TCGA_RNASeq_LUAD","network_TCGA_RNASeq_LUSC","network_TCGA_RNASeq_MESO","network_TCGA_RNASeq_OV","network_TCGA_RNASeq_PAAD","network_TCGA_RNASeq_PCPG","network_TCGA_RNASeq_PRAD","network_TCGA_RNASeq_SARC","network_TCGA_RNASeq_SKCM","network_TCGA_RNASeq_STAD","network_TCGA_RNASeq_STES","network_TCGA_RNASeq_TGCT","network_TCGA_RNASeq_THCA","network_TCGA_RNASeq_THYM","network_TCGA_RNASeq_UCEC","network_TCGA_RNASeq_UCS","network_TCGA_RNASeq_UVM","network_Transcription_Factor_target","network_miRNA_target","disease_Disgenet","disease_GLAD4U","disease_OMIM","drug_DrugBank","drug_GLAD4U","phenotype_Human_Phenotype_Ontology","chromosomalLocation_CytogeneticBand","community-contributed_5htGeneSets_Conte","community-contributed_Hallmark50","community-contributed_MuscleGeneSets_Duddy_2017"],"description":["The gene ontology biological process database was downloaded from http://www.geneontology.org/.","The gene ontology biological process database was downloaded from http://www.geneontology.org/. Then, we only contain the non-redundant categories by selecting the most general categories in each branch of the GO DAG structure from all categories with the number of annotated genes from 20 to 500.","The gene ontology cellular component database was downloaded from http://www.geneontology.org/.","The gene ontology cellular component database was downloaded from http://www.geneontology.org/. Then, we only contain the non-redundant categories by selecting the most general categories in each branch of the GO DAG structure from all categories with the number of annotated genes from 20 to 500.","The gene ontology molecular function database was downloaded from http://www.geneontology.org/.","The gene ontology molecular function database was downloaded from http://www.geneontology.org/. Then, we only contain the non-redundant categories by selecting the most general categories in each branch of the GO DAG structure from all categories with the number of annotated genes from 20 to 500.","The KEGG pathway database was downloaded from http://www.kegg.jp/.","The PANTHER pathway database was downloaded from http://www.pantherdb.org/pathway/.","The Reactome pathway database was downloaded from http://www.reactome.org/.","The Wikipathway database was downloaded from http://www.wikipathway.org/.","The Wikipathway database was downloaded from http://www.wikipathway.org/. This is the subset relevant to Clinical Proteomic Tumor Analysis Consortium.","The core complex subunits were downloaded from CORUM database (https://mips.helmholtz-muenchen.de/corum/#).","","The BRCA (Breast invasive carcinoma) Proteomics data was downloaded from CPTAC (Clinical Proteomic Tumor Analysis Consortium) data portal (https://cptac-data-portal.georgetown.edu/cptacPublic/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus Proteomics co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The COADREAD (Colorectal adenocarcinoma) Proteomics data was downloaded from CPTAC (Clinical Proteomic Tumor Analysis Consortium) data portal (https://cptac-data-portal.georgetown.edu/cptacPublic/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus Proteomics co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The HNSCC (Head-and-neck Squamous Cell Carcinoma) Proteomics data was downloaded from LinkedOmics data portal (http://www.linkedomics.org/data_download/CPTAC-HNSCC/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus Proteomics co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The LUAD (Lung Adenocarcinoma) Proteomics data was downloaded from LinkedOmics data portal (http://www.linkedomics.org/data_download/CPTAC-LUAD/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus Proteomics co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The OV (Ovarian serous cystadenocarcinoma) Proteomics data was downloaded from CPTAC (Clinical Proteomic Tumor Analysis Consortium) data portal (https://cptac-data-portal.georgetown.edu/cptacPublic/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus Proteomics co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The UCEC (Uterine Corpus Endometrial Carcinoma) Proteomics data was downloaded from LinkedOmics data portal (http://www.linkedomics.org/data_download/CPTAC-UCEC/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus Proteomics co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","","","The relationship between Kinase and the corresponding protein phosposite position was from RegPhos (http://140.138.144.141/~RegPhos/). Then, we got the 15-mer sequence window around the phosphorylated site of the peptide (up and down 7 amino acid) from the Uniprot website (http://www.uniprot.org/) as the identifier tag.","The relationship between Kinase and its targets was from PhosphositePlus (http://www.phosphosite.org/) and the phosphorylation relationships from a in-house combined signaling network.","The protein-protein interaction (PPI) network was downloaded from BIOGRID (https://thebiogrid.org/). Then, we used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","","The ACC (Adrenocortical carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The BLCA (Bladder Urothelial Carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The BRCA (Breast invasive carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The CESC (Cervical squamous cell carcinoma and endocervical adenocarcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The CHOL (Cholangiocarcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The COADREAD (Colon and rectal cancer) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The DLBC (Lymphoid Neoplasm Diffuse Large B-cell Lymphoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The ESCA (Esophageal carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The GBM (Glioblastoma multiforme) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The GBMLGG (Glioma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The HNSC (Head and Neck squamous cell carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The KICH (Kidney Chromophobe) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The KIRP (Kidney renal papillary cell carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The LAML (Acute Myeloid Leukemia) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The LGG (Brain Lower Grade Glioma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The LIHC (Liver hepatocellular carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The LUAD (Lung adenocarcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The LUSC (Lung squamous cell carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The MESO (Mesothelioma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The OV (Ovarian serous cystadenocarcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The PAAD (Pancreatic adenocarcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The PCPG (Pheochromocytoma and Paraganglioma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The PRAD (Prostate adenocarcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The SARC (Sarcoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The SKCM (Skin Cutaneous Melanoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The STAD (Stomach adenocarcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The STES (Stomach and Esophageal carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The TGCT (Testicular Germ Cell Tumors) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The THCA (Thyroid carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The THYM (Thymoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The UCEC (Uterine Corpus Endometrial Carcinoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The UCS (Uterine Carcinosarcoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The UVM (Uveal Melanoma) RNASeq data was downloaded from TCGA (The Cancer Genome Atlas) firehose data portal (https://gdac.broadinstitute.org/). Then, based on the method described in our recently published paper (PMID: 27836980), we first constructed the consensus RNASeq co-expression network and then used the NetSAM R package (http://bioconductor.org/packages/release/bioc/html/NetSAM.html) to identify the hierarchical co-expression modules.","The relationship between transcription factor and its targets was downloaded from MsigDB (http://software.broadinstitute.org/gsea/msigdb).","The relationship between miRNA and its targets was downloaded from MsigDB (http://software.broadinstitute.org/gsea/msigdb).","The DisgeNET disease database was downloaded from http://www.disgenet.org.","Disease terms were downloaded from ParmGKB (https://www.pharmgkb.org/). Genes associated with individual disease term were inferred using GLAD4U (http://glad4u.zhang-lab.org/index.php).","","The DrugBank drug database was downloaded from https://www.drugbank.ca/.","Drug terms were downloaded from ParmGKB (https://www.pharmgkb.org/). Genes associated with individual drug term were inferred using GLAD4U (http://glad4u.zhang-lab.org/index.php).","The phenotype ontology information for human was downloaded from http://human-phenotype-ontology.github.io/.","","","Hallmark gene sets summarize and represent specific well-defined biological states or processes and display coherent expression. See details at http://software.broadinstitute.org/gsea/msigdb/collections.jsp#H .","Muscle Gene Sets (v3) Duddy 2017"],"idType":["entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","phosphositeSeq","entrezgene","entrezgene","phosphositeSeq","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene","entrezgene"]},"columns":[{"id":"name","name":"name","type":"character"},{"id":"description","name":"description","type":"character"},{"id":"idType","name":"idType","type":"character"}],"dataKey":"42e6b4ca89a7d3424364ed94538b82dc"},"children":[]},"class":"reactR_markup"},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+</section>
+<section id="fitting-from-a-gene-list" class="level3" data-number="2.2.2">
+<h3 data-number="2.2.2" class="anchored" data-anchor-id="fitting-from-a-gene-list"><span class="header-section-number">2.2.2</span> Fitting from a gene list</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>list <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="st">'example_list.rds'</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> gseasusie<span class="sc">::</span><span class="fu">fit_gsea_susie_webgestalt</span>(list<span class="sc">$</span>gene_list, list<span class="sc">$</span>gene_background, <span class="at">enrichDatabase =</span> <span class="st">'geneontology_Biological_Process'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>7.206 sec elapsed</code></pre>
+</div>
+</div>
+<p>A dynamic table of the resutls can be viewed with</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>fit <span class="sc">%&gt;%</span> </span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  gseasusie<span class="sc">::</span><span class="fu">make_cs_tbl</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  gseasusie<span class="sc">::</span><span class="fu">make_reactable</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code></code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>'select()' returned 1:1 mapping between keys and columns</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code></code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>'select()' returned 1:1 mapping between keys and columns</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Joining with `by = join_by(gene)`
+Joining with `by = join_by(geneSet)`
+Joining with `by = join_by(geneSet)`</code></pre>
+</div>
+<div class="cell-output-display">
+<div class="reactable html-widget html-fill-item" id="htmlwidget-a3fa08763726eb127001" style="width:auto;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-a3fa08763726eb127001">{"x":{"tag":{"name":"Reactable","attribs":{"data":{"component":["L1","L3"],"log2BF_SER":[77.7194378448951,29.8665595374129],"geneSet":["GO:0006955","GO:0034097"],"name":["immune response","response to cytokine"],"size":[891,524],"propInList":[0.374859708193042,0.41030534351145],"log2OR":[1.21654765801547,1.08359664174863],"PIP":[0.989356815814972,0.941756069660187],"log2BF":[91.3206632784479,43.3966492092866]},"columns":[{"id":"component","name":"component","type":["glue","character"],"style":"function(rowInfo, column, state) {\n        const firstSorted = state.sorted[0]\n        // Merge cells if unsorted or sorting by school\n        if (!firstSorted || firstSorted.id === 'component') {\n          const prevRow = state.pageRows[rowInfo.viewIndex - 1]\n          if (prevRow && rowInfo.values['component'] === prevRow['component']) {\n            return { visibility: 'hidden' }\n          }\n        }\n      }"},{"id":"log2BF_SER","name":"log2BF_SER","type":"numeric","aggregate":"min","format":{"cell":{"digits":2},"aggregated":{"digits":2}},"style":"function(rowInfo, column, state) {\n        const firstSorted = state.sorted[0]\n        // Merge cells if unsorted or sorting by school\n        if (!firstSorted || firstSorted.id === 'log2BF_SER') {\n          const prevRow = state.pageRows[rowInfo.viewIndex - 1]\n          if (prevRow && rowInfo.values['log2BF_SER'] === prevRow['log2BF_SER']) {\n            return { visibility: 'hidden' }\n          }\n        }\n      }"},{"id":"geneSet","name":"geneSet","type":"character","cell":[{"name":"div","attribs":{"style":{"text-decoration":"underline","text-decoration-style":"dotted","cursor":"help"}},"children":[{"name":"WidgetContainer","attribs":{"key":"e9165e5031ced195d9f180228fbc00f9"},"children":[{"name":"Fragment","attribs":[],"children":[{"name":"span","attribs":{"id":"htmlwidget-8b728361ec30c23d4256","width":"100%","height":"338px","className":"tippy html-widget html-fill-item"},"children":[]},{"name":"script","attribs":{"type":"application/json","data-for":"htmlwidget-8b728361ec30c23d4256"},"children":["{\"x\":{\"opts\":{\"content\":\"Any immune system process that functions in the calibrated response of an organism to a potential internal or invasive threat.\"},\"text\":\"GO:0006955\"},\"evals\":[],\"jsHooks\":[]}"]}]}]}]},{"name":"div","attribs":{"style":{"text-decoration":"underline","text-decoration-style":"dotted","cursor":"help"}},"children":[{"name":"WidgetContainer","attribs":{"key":"2d700aa77c02e90e0f2b86d431a72731"},"children":[{"name":"Fragment","attribs":[],"children":[{"name":"span","attribs":{"id":"htmlwidget-10eca21414daa5bf61ca","width":"100%","height":"338px","className":"tippy html-widget html-fill-item"},"children":[]},{"name":"script","attribs":{"type":"application/json","data-for":"htmlwidget-10eca21414daa5bf61ca"},"children":["{\"x\":{\"opts\":{\"content\":\"Any process that results in a change in state or activity of a cell or an organism (in terms of movement, secretion, enzyme production, gene expression, etc.) as a result of a cytokine stimulus.\"},\"text\":\"GO:0034097\"},\"evals\":[],\"jsHooks\":[]}"]}]}]}]}]},{"id":"name","name":"name","type":"character"},{"id":"size","name":"size","type":"numeric","format":{"cell":{"digits":0},"aggregated":{"digits":0}}},{"id":"propInList","name":"propInList","type":"numeric","format":{"cell":{"digits":2},"aggregated":{"digits":2}}},{"id":"log2OR","name":"log2OR","type":"numeric","format":{"cell":{"digits":2},"aggregated":{"digits":2}},"style":[{"background":"#63FF63"},{"background":"#74FF74"}]},{"id":"PIP","name":"PIP","type":"numeric","format":{"cell":{"digits":2},"aggregated":{"digits":2}}},{"id":"log2BF","name":"log2BF","type":"numeric","format":{"cell":{"digits":2},"aggregated":{"digits":2}}}],"groupBy":["component"],"paginateSubRows":true,"defaultExpanded":true,"dataKey":"8dd93aba6081166cd33e9fd02f58e1ec"},"children":[]},"class":"reactR_markup"},"evals":["tag.attribs.columns.0.style","tag.attribs.columns.1.style"],"jsHooks":[]}</script>
+</div>
+</div>
+<p>A static version of this table can be produced by</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>fit <span class="sc">%&gt;%</span> </span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  gseasusie<span class="sc">::</span><span class="fu">make_cs_tbl</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  gseasusie<span class="sc">::</span><span class="fu">make_gt_table</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>'select()' returned 1:1 mapping between keys and columns
+'select()' returned 1:1 mapping between keys and columns</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Joining with `by = join_by(gene)`
+Joining with `by = join_by(geneSet)`
+Joining with `by = join_by(geneSet)`</code></pre>
+</div>
+<div class="cell-output-display">
+<div id="jpqbrfhxnc" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#jpqbrfhxnc table {
+  font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#jpqbrfhxnc thead, #jpqbrfhxnc tbody, #jpqbrfhxnc tfoot, #jpqbrfhxnc tr, #jpqbrfhxnc td, #jpqbrfhxnc th {
+  border-style: none;
+}
+
+#jpqbrfhxnc p {
+  margin: 0;
+  padding: 0;
+}
+
+#jpqbrfhxnc .gt_table {
+  display: table;
+  border-collapse: collapse;
+  line-height: normal;
+  margin-left: auto;
+  margin-right: auto;
+  color: #333333;
+  font-size: 16px;
+  font-weight: normal;
+  font-style: normal;
+  background-color: #FFFFFF;
+  width: auto;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #A8A8A8;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #A8A8A8;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_caption {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+#jpqbrfhxnc .gt_title {
+  color: #333333;
+  font-size: 125%;
+  font-weight: initial;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-color: #FFFFFF;
+  border-bottom-width: 0;
+}
+
+#jpqbrfhxnc .gt_subtitle {
+  color: #333333;
+  font-size: 85%;
+  font-weight: initial;
+  padding-top: 3px;
+  padding-bottom: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-color: #FFFFFF;
+  border-top-width: 0;
+}
+
+#jpqbrfhxnc .gt_heading {
+  background-color: #FFFFFF;
+  text-align: center;
+  border-bottom-color: #FFFFFF;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_bottom_border {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_col_headings {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_col_heading {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 6px;
+  padding-left: 5px;
+  padding-right: 5px;
+  overflow-x: hidden;
+}
+
+#jpqbrfhxnc .gt_column_spanner_outer {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+#jpqbrfhxnc .gt_column_spanner_outer:first-child {
+  padding-left: 0;
+}
+
+#jpqbrfhxnc .gt_column_spanner_outer:last-child {
+  padding-right: 0;
+}
+
+#jpqbrfhxnc .gt_column_spanner {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  overflow-x: hidden;
+  display: inline-block;
+  width: 100%;
+}
+
+#jpqbrfhxnc .gt_spanner_row {
+  border-bottom-style: hidden;
+}
+
+#jpqbrfhxnc .gt_group_heading {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  text-align: left;
+}
+
+#jpqbrfhxnc .gt_empty_group_heading {
+  padding: 0.5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: middle;
+}
+
+#jpqbrfhxnc .gt_from_md > :first-child {
+  margin-top: 0;
+}
+
+#jpqbrfhxnc .gt_from_md > :last-child {
+  margin-bottom: 0;
+}
+
+#jpqbrfhxnc .gt_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  margin: 10px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-top-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  overflow-x: hidden;
+}
+
+#jpqbrfhxnc .gt_stub {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#jpqbrfhxnc .gt_stub_row_group {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+  vertical-align: top;
+}
+
+#jpqbrfhxnc .gt_row_group_first td {
+  border-top-width: 2px;
+}
+
+#jpqbrfhxnc .gt_row_group_first th {
+  border-top-width: 2px;
+}
+
+#jpqbrfhxnc .gt_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#jpqbrfhxnc .gt_first_summary_row {
+  border-top-style: solid;
+  border-top-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_first_summary_row.thick {
+  border-top-width: 2px;
+}
+
+#jpqbrfhxnc .gt_last_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_grand_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#jpqbrfhxnc .gt_first_grand_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-style: double;
+  border-top-width: 6px;
+  border-top-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_last_grand_summary_row_top {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: double;
+  border-bottom-width: 6px;
+  border-bottom-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_striped {
+  background-color: rgba(128, 128, 128, 0.05);
+}
+
+#jpqbrfhxnc .gt_table_body {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_footnotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_footnote {
+  margin: 0px;
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#jpqbrfhxnc .gt_sourcenotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#jpqbrfhxnc .gt_sourcenote {
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#jpqbrfhxnc .gt_left {
+  text-align: left;
+}
+
+#jpqbrfhxnc .gt_center {
+  text-align: center;
+}
+
+#jpqbrfhxnc .gt_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#jpqbrfhxnc .gt_font_normal {
+  font-weight: normal;
+}
+
+#jpqbrfhxnc .gt_font_bold {
+  font-weight: bold;
+}
+
+#jpqbrfhxnc .gt_font_italic {
+  font-style: italic;
+}
+
+#jpqbrfhxnc .gt_super {
+  font-size: 65%;
+}
+
+#jpqbrfhxnc .gt_footnote_marks {
+  font-size: 75%;
+  vertical-align: 0.4em;
+  position: initial;
+}
+
+#jpqbrfhxnc .gt_asterisk {
+  font-size: 100%;
+  vertical-align: 0;
+}
+
+#jpqbrfhxnc .gt_indent_1 {
+  text-indent: 5px;
+}
+
+#jpqbrfhxnc .gt_indent_2 {
+  text-indent: 10px;
+}
+
+#jpqbrfhxnc .gt_indent_3 {
+  text-indent: 15px;
+}
+
+#jpqbrfhxnc .gt_indent_4 {
+  text-indent: 20px;
+}
+
+#jpqbrfhxnc .gt_indent_5 {
+  text-indent: 25px;
+}
+
+#jpqbrfhxnc .katex-display {
+  display: inline-flex !important;
+  margin-bottom: 0.75em !important;
+}
+
+#jpqbrfhxnc div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
+  height: 0px !important;
+}
+</style>
+
+<table class="gt_table caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
+<thead>
+<tr class="gt_col_headings header">
+<th id="geneSet" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">geneSet</th>
+<th id="name" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">name</th>
+<th id="size" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">size</th>
+<th id="propInList" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">propInList</th>
+<th id="log2OR" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">log2OR</th>
+<th id="PIP" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">PIP</th>
+<th id="log2BF" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">log2BF</th>
+</tr>
+</thead>
+<tbody class="gt_table_body">
+<tr class="gt_group_heading_row odd">
+<td colspan="7" id="L1" class="gt_group_heading" data-quarto-table-cell-role="th" scope="colgroup">L1</td>
+</tr>
+<tr class="gt_row_group_first even">
+<td class="gt_row gt_left" headers="L1  geneSet">GO:0006955</td>
+<td class="gt_row gt_left" headers="L1  name">immune response</td>
+<td class="gt_row gt_right" headers="L1  size">891</td>
+<td class="gt_row gt_right" headers="L1  propInList">0.37</td>
+<td class="gt_row gt_right" headers="L1  log2OR">1.22</td>
+<td class="gt_row gt_right" headers="L1  PIP">0.99</td>
+<td class="gt_row gt_right" headers="L1  log2BF">91.32</td>
+</tr>
+<tr class="gt_group_heading_row odd">
+<td colspan="7" id="L3" class="gt_group_heading" data-quarto-table-cell-role="th" scope="colgroup">L3</td>
+</tr>
+<tr class="gt_row_group_first even">
+<td class="gt_row gt_left" headers="L3  geneSet">GO:0034097</td>
+<td class="gt_row gt_left" headers="L3  name">response to cytokine</td>
+<td class="gt_row gt_right" headers="L3  size">524</td>
+<td class="gt_row gt_right" headers="L3  propInList">0.41</td>
+<td class="gt_row gt_right" headers="L3  log2OR">1.08</td>
+<td class="gt_row gt_right" headers="L3  PIP">0.94</td>
+<td class="gt_row gt_right" headers="L3  log2BF">43.40</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</section>
+<section id="fitting-with-a-gene-set-matrix" class="level3" data-number="2.2.3">
+<h3 data-number="2.2.3" class="anchored" data-anchor-id="fitting-with-a-gene-set-matrix"><span class="header-section-number">2.2.3</span> Fitting with a gene set matrix</h3>
+<p>Alternatively, you can provide a matrix sparse matrix <code>X_sp</code> and a binary vector <code>y</code>. <code>X_sp</code> should have dimension <span class="math inline">\(p \times n\)</span> where <span class="math inline">\(p\)</span> are the number of gene sets and <span class="math inline">\(n\)</span> the number of genes. <span class="math inline">\(y\)</span> is length <span class="math inline">\(n\)</span>. This allows you to use your own custom gene sets.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">with</span>(list, gseasusie<span class="sc">::</span><span class="fu">prepare_data_webgestalt</span>(gene_list, gene_background, <span class="st">'geneontology_Biological_Process'</span>))</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>Matrix<span class="sc">::</span><span class="fu">mean</span>(data<span class="sc">$</span>X) <span class="co"># the matrix is sparse</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0.007592709</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(data<span class="sc">$</span>y) <span class="co"># response is binary</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0 0 0 0 0 1</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> gseasusie<span class="sc">::</span><span class="fu">logistic_susie_sparse</span>(data<span class="sc">$</span>X, data<span class="sc">$</span>y, <span class="at">L=</span><span class="dv">10</span>L)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const onCopySuccess = function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  }
+  const getTextToCopy = function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+    text: getTextToCopy
+  });
+  clipboard.on('success', onCopySuccess);
+  if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+    const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+      text: getTextToCopy,
+      container: window.document.getElementById('quarto-embedded-source-code-modal')
+    });
+    clipboardModal.on('success', onCopySuccess);
+  }
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp('/' + window.location.host + '/');
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="../notebooks/gsea_simulated_example/index.html" class="pagination-link" aria-label="GSEA with logistic SuSiE, simulated example">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text"><span class="chapter-number">1</span>&nbsp; <span class="chapter-title">GSEA with logistic SuSiE, simulated example</span></span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+      <a href="../notebooks/pbmcs/index.html" class="pagination-link" aria-label="PBMC GSEA Example">
+        <span class="nav-page-text"><span class="chapter-number">3</span>&nbsp; <span class="chapter-title">PBMC GSEA Example</span></span> <i class="bi bi-arrow-right-short"></i>
+      </a>
+  </div>
+</nav>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
